@@ -134,7 +134,12 @@ class GraphHelper
     // or other code
     public async static Task MakeGraphCallAsync()
     {
-        // INSERT YOUR CODE HERE
+        var groups = await _userClient.Groups.GetAsync();
+
+        foreach (var g in groups.Value)
+        {
+            Console.WriteLine(g.Id);
+        }
     }
     // </MakeGraphCallSnippet>
 }
