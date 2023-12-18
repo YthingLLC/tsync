@@ -1,6 +1,3 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT license.
-
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Graph;
@@ -9,7 +6,6 @@ using Microsoft.Graph.Me.SendMail;
 
 class GraphHelper
 {
-    // <UserAuthConfigSnippet>
     // Settings object
     private static Settings? _settings;
     // User auth token credential
@@ -33,9 +29,7 @@ class GraphHelper
 
         _userClient = new GraphServiceClient(_deviceCodeCredential, settings.GraphUserScopes);
     }
-    // </UserAuthConfigSnippet>
 
-    // <GetUserTokenSnippet>
     public static async Task<string> GetUserTokenAsync()
     {
         // Ensure credential isn't null
@@ -50,9 +44,7 @@ class GraphHelper
         var response = await _deviceCodeCredential.GetTokenAsync(context);
         return response.Token;
     }
-    // </GetUserTokenSnippet>
 
-    // <GetUserSnippet>
     public static Task<User?> GetUserAsync()
     {
         // Ensure client isn't null
@@ -65,9 +57,7 @@ class GraphHelper
             config.QueryParameters.Select = new[] {"displayName", "mail", "userPrincipalName" };
         });
     }
-    // </GetUserSnippet>
 
-    // <GetInboxSnippet>
     public static Task<MessageCollectionResponse?> GetInboxAsync()
     {
         // Ensure client isn't null
@@ -88,9 +78,7 @@ class GraphHelper
                 config.QueryParameters.Orderby = new[] { "receivedDateTime DESC" };
             });
     }
-    // </GetInboxSnippet>
 
-    // <SendMailSnippet>
     public static async Task SendMailAsync(string subject, string body, string recipient)
     {
         // Ensure client isn't null
@@ -126,12 +114,7 @@ class GraphHelper
                 Message = message
             });
     }
-    // </SendMailSnippet>
 
-    #pragma warning disable CS1998
-    // <MakeGraphCallSnippet>
-    // This function serves as a playground for testing Graph snippets
-    // or other code
     public async static Task MakeGraphCallAsync()
     {
         var groups = await _userClient.Groups.GetAsync();
@@ -141,5 +124,4 @@ class GraphHelper
             Console.WriteLine(g.Id);
         }
     }
-    // </MakeGraphCallSnippet>
 }

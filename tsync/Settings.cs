@@ -1,7 +1,3 @@
-// Copyright (c) Microsoft Corporation.
-// Licensed under the MIT License.
-
-// <SettingsSnippet>
 using Microsoft.Extensions.Configuration;
 
 public class Settings
@@ -26,4 +22,3 @@ public class Settings
             throw new Exception("Could not load app settings. See README for configuration instructions.");
     }
 }
-// </SettingsSnippet>
