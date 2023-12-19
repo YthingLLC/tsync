@@ -339,31 +339,6 @@ class GraphHelper
         }
         
         var planBuckets = new Dictionary<String, List<PlanBucket>>();
-        
-        foreach (var p in plans)
-        {
-            var buckets = new List<PlanBucket>();
-            var bucketReqs = new List<Task<PlannerBucketCollectionResponse?>>();
-            foreach (var p2 in p.plans)
-            {
-                if (p2.Id is null)
-                {
-                    continue;
-                }
-                bucketReqs.Add(_userClient.Planner.Plans[p2.Id].Buckets.GetAsync());
-            }
-            foreach (var b in bucketReqs)
-            {
-                var bucket = await b;
-            
-                if (bucket?.Value is not null)
-                {
-                    
-                }
-            }
-        }
-        
-        
 
     }
 }
