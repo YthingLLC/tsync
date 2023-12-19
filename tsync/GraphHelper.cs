@@ -3,6 +3,7 @@ using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Me.SendMail;
+using KeyValuePair = Microsoft.Graph.Models.KeyValuePair;
 
 class GraphHelper
 {
@@ -115,13 +116,48 @@ class GraphHelper
             });
     }
 
+
+    static KeyValuePair<K, Task<V>> TaskKVP<K, V>(K id, Task<V> task)
+    {
+        return new KeyValuePair<K, Task<V>>(id, task);
+    }
     public async static Task MakeGraphCallAsync()
     {
         var groups = await _userClient.Groups.GetAsync();
 
+        if (groups?.Value is null)
+        {
+            Console.WriteLine("Unable to get Groups from Graph");
+            return;
+        }
+        
+        var grplans = new List<KeyValuePair<(String, String), Task<PlannerPlanCollectionResponse?>>>(100);
+        
         foreach (var g in groups.Value)
         {
-            Console.WriteLine(g.Id);
+            if (g.Id is null || g.DisplayName is null)
+            {
+                continue;
+            }
+            grplans.Add(TaskKVP((g.Id, g.DisplayName),_userClient.Groups[g.Id].Planner.Plans.GetAsync()));
+        }
+
+        var groupId = "Group ID";
+        var groupName = "Group Name";
+        var planCount = "Plan Count";
+        //grr... C# why don't you have ^40 like Rust for centered alignment
+        var header = $"{groupId,-38} {groupName,-36} {planCount,-4}";
+        Console.WriteLine(header);
+        foreach (var g in grplans)
+        {
+            Console.Write($"{g.Key.Item1, -38} {g.Key.Item2, -36} ");
+            var val = await g.Value;
+            if (val?.Value is null)
+            {
+                Console.WriteLine("NULL");
+                continue;
+            }
+            Console.WriteLine($"{val.Value.Count}");
         }
     }
 }
