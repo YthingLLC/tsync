@@ -3,7 +3,7 @@ using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Me.SendMail;
-using KeyValuePair = Microsoft.Graph.Models.KeyValuePair;
+using Manatee.Trello;
 
 class GraphHelper
 {
@@ -313,6 +313,54 @@ class GraphHelper
         }
 
         return ret;
+    }
+
+    public async static Task GetTrelloBoards()
+    {
+
+        Console.WriteLine("If this does not work, generate a new token, and update appsettings.json");
+        Console.WriteLine($"https://trello.com/1/authorize?expiration=never&name=MyPersonalToken&scope=read&response_type=token&key={_settings.TrelloApiKey}");
+        
+        TrelloAuthorization.Default.AppKey = _settings.TrelloApiKey;
+        TrelloAuthorization.Default.UserToken = _settings.TrelloUserToken;
+
+        var factory = new TrelloFactory();
+
+        var me = await factory.Me();
+
+        //required, as factory.Me() does not get these, separate API calls
+        await me.Organizations.Refresh();
+        await me.Boards.Refresh();
+
+        Console.WriteLine($"User ID:   {me.Id}");
+        Console.WriteLine($"User Name: {me.UserName}");
+        Console.WriteLine($"Orgs:      {me.Organizations.Count()}");
+        Console.WriteLine($"My Boards: {me.Boards.Count()}");
+
+        Console.WriteLine("My boards: ");
+        foreach (var b in me.Boards)
+        {
+            Console.WriteLine(b.Name);
+        }
+
+        Console.WriteLine("My orgs: ");
+
+        foreach (var o in me.Organizations)
+        {
+            Console.WriteLine(o.DisplayName);
+            
+            await o.Boards.Refresh();
+            
+            Console.WriteLine($"---- Boards: {o.Boards.Count()} ");
+
+            foreach (var b in o.Boards)
+            {
+                Console.WriteLine($"---- {b.Id} {b.Name}");
+            }
+            
+        }
+        
+        
     }
     
     //the Graph API (v1) does not have the ability to create new planner plans

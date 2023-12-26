@@ -18,6 +18,7 @@ while (choice != 0)
     Console.WriteLine("2. List my inbox");
     Console.WriteLine("3. Send mail");
     Console.WriteLine("4. Make a Graph call");
+    Console.WriteLine("5. Call Trello API");
 
     try
     {
@@ -50,6 +51,9 @@ while (choice != 0)
         case 4:
             // Run any Graph code
             await MakeGraphCallAsync();
+            break;
+        case 5:
+            await GraphHelper.GetTrelloBoards();
             break;
         default:
             Console.WriteLine("Invalid choice! Please try again.");

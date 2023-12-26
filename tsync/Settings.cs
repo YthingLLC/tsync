@@ -2,10 +2,14 @@ using Microsoft.Extensions.Configuration;
 
 public class Settings
 {
-    public string? ClientId { get; set; }
-    public string? TenantId { get; set; }
-    public string[]? GraphUserScopes { get; set; }
+    public string? ClientId { get; init; }
+    public string? TenantId { get; init; }
+    public string[]? GraphUserScopes { get; init; }
 
+    public string? TrelloApiKey { get; init; }
+    
+    public string? TrelloUserToken { get; init; }
+    
     public static Settings LoadSettings()
     {
         // Load settings
