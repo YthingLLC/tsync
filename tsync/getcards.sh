@@ -1,0 +1,1 @@
+curl --request GET --url "https://api.trello.com/1/boards/5f64cec007862b53efcc5cb7/cards/all?key=$(jq -r '.settings .trelloApiKey'  < appsettings.json)&token=$(jq -r ".settings .trelloUserToken" < appsettings.json)" --header 'Accept: application/json' | jq '.[] | {name, id}'
