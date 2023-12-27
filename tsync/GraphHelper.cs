@@ -4,6 +4,7 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Me.SendMail;
 using Manatee.Trello;
+using List = Manatee.Trello.List;
 
 class GraphHelper
 {
@@ -315,52 +316,152 @@ class GraphHelper
         return ret;
     }
 
-    public async static Task GetTrelloBoards()
+    async static Task<List<IBoard>> GetAllTrelloBoards()
     {
-
         Console.WriteLine("If this does not work, generate a new token, and update appsettings.json");
-        Console.WriteLine($"https://trello.com/1/authorize?expiration=never&name=MyPersonalToken&scope=read&response_type=token&key={_settings.TrelloApiKey}");
-        
+        Console.WriteLine(
+            $"https://trello.com/1/authorize?expiration=never&name=MyPersonalToken&scope=read&response_type=token&key={_settings.TrelloApiKey}");
+
         TrelloAuthorization.Default.AppKey = _settings.TrelloApiKey;
         TrelloAuthorization.Default.UserToken = _settings.TrelloUserToken;
+        //TrelloConfiguration.EnableConsistencyProcessing = true;
+        Board.DownloadedFields |= Board.Fields.Cards;
+        Board.DownloadedFields |= Board.Fields.Lists;
+        Board.DownloadedFields |= Board.Fields.CustomFields;
+        Board.DownloadedFields |= Board.Fields.Labels;
+
+        //Card.DownloadedFields |= Card.Fields.CustomFields;
+        //Card.DownloadedFields |= Card.Fields.Comments;
+        //Card.DownloadedFields |= Card.Fields.Attachments;
+        //Card.DownloadedFields |= Card.Fields.Checklists;
+        //Card.DownloadedFields |= Card.Fields.Description;
+        //Card.DownloadedFields |= Card.Fields.Name;
+        //Card.DownloadedFields |= Card.Fields.IsArchived;
+
+        //List.DownloadedFields |= List.Fields.Name;
+        //List.DownloadedFields |= List.Fields.Cards;
 
         var factory = new TrelloFactory();
-
+        
         var me = await factory.Me();
-
+        
         //required, as factory.Me() does not get these, separate API calls
+        //there may be a better way to do this, but idc right now
         await me.Organizations.Refresh();
         await me.Boards.Refresh();
+        
+        //Console.WriteLine($"User ID:   {me.Id}");
+        //Console.WriteLine($"User Name: {me.UserName}");
+        //Console.WriteLine($"Orgs:      {me.Organizations.Count()}");
+        //Console.WriteLine($"My Boards: {me.Boards.Count()}");
 
-        Console.WriteLine($"User ID:   {me.Id}");
-        Console.WriteLine($"User Name: {me.UserName}");
-        Console.WriteLine($"Orgs:      {me.Organizations.Count()}");
-        Console.WriteLine($"My Boards: {me.Boards.Count()}");
-
-        Console.WriteLine("My boards: ");
-        foreach (var b in me.Boards)
-        {
-            Console.WriteLine(b.Name);
-        }
-
-        Console.WriteLine("My orgs: ");
-
+        var ret = new List<IBoard>();
+        
+        //Console.WriteLine("My boards: ");
+        //foreach (var b in me.Boards)
+        //{
+        //    Console.WriteLine(b.Name);
+        //}
+        //
+        //Console.WriteLine("My orgs: ");
+        
         foreach (var o in me.Organizations)
         {
-            Console.WriteLine(o.DisplayName);
+            //Console.WriteLine(o.DisplayName);
+            o.Boards.Filter(BoardFilter.All);
             
             await o.Boards.Refresh();
             
-            Console.WriteLine($"---- Boards: {o.Boards.Count()} ");
-
+            //Console.WriteLine($"---- Boards: {o.Boards.Count()} ");
+        
             foreach (var b in o.Boards)
             {
-                Console.WriteLine($"---- {b.Id} {b.Name}");
+                b.Cards.Filter(CardFilter.All);
+                b.Lists.Filter(ListFilter.All);
+                await b.Refresh();
+                //Console.WriteLine($"---- {b.Id} {b.Name}");
+                ret.Add(b);
             }
             
         }
+
+        return ret;
+    }
+
+    //TODO: Implement attachment downloading
+    async static Task DownloadAttachment(ICard card)
+    {
+        throw new NotImplementedException();
+    }
+
+    async static Task UploadAttachment(String name, Stream attachment, String taskId)
+    {
+        //TODO:
+        //1. Upload the attachment to SharePoint site associated with the plan
+        //2. Create the request body to attach the upload to the task
+        //3. Confirm that the upload actually suceeded
+        //https://learn.microsoft.com/en-us/graph/api/resources/plannerexternalreferences?view=graph-rest-1.0
+        //URLs are encoded, idk if the API needs this or if it will take unencoded URLs, probably not
+
+        throw new NotImplementedException();
+    }
+
+    public async static Task Trello()
+    {
+
+        var trelloBoards = await GetAllTrelloBoards();
+
+        Console.WriteLine($"Total Boards: {trelloBoards.Count} ");
+
+        Int32 totalBoards = 0,
+            totalLists = 0,
+            totalCards = 0,
+            totalAttachments = 0,
+            totalCustomFields = 0,
+            totalComments = 0,
+            totalChecklists = 0,
+            totalArchived = 0;
         
-        
+        foreach (var b in trelloBoards)
+        {
+            totalBoards++;
+            Console.WriteLine($"Board: {b.Id} {b.Name}");
+            Console.WriteLine("Lists:");
+            foreach (var l in b.Lists)
+            {
+                totalLists++;
+                await l.Cards.Refresh();
+                Console.WriteLine($"----{l.Name} ({l.Cards.Count()} cards)");
+                foreach (var c in l.Cards)
+                {
+                    if (c.IsArchived.GetValueOrDefault())
+                    {
+                        totalArchived++;
+                    }
+                    totalCards++;
+                    //await c.Comments.Refresh();
+                    //await c.CheckLists.Refresh();
+                    Console.WriteLine($"++++Name: {c.Name}");
+                    Console.WriteLine($"++++Desc: {c.Description}");
+                    Console.WriteLine($"++++Atta: {c.Attachments.Count()}");
+                    totalAttachments += c.Attachments.Count();
+                    Console.WriteLine($"++++CFld: {c.CustomFields.Count()}");
+                    totalCustomFields += c.CustomFields.Count();
+                    Console.WriteLine($"++++Coms: {c.Comments.Count()}");
+                    totalComments += c.Comments.Count();
+                    Console.WriteLine($"++++Clst: {c.CheckLists.Count()}");
+                    totalChecklists = c.CheckLists.Count();
+                }
+            }
+        }
+
+        Console.WriteLine($"Total Cards: {totalCards}");
+        Console.WriteLine($"Total Archd: {totalArchived}");
+        Console.WriteLine($"Total Attch: {totalAttachments}");
+        Console.WriteLine($"Total Cflds: {totalCustomFields}");
+        Console.WriteLine($"Total Comms: {totalComments}");
+        Console.WriteLine($"Total Clist: {totalChecklists}");
+
     }
     
     //the Graph API (v1) does not have the ability to create new planner plans
@@ -388,5 +489,13 @@ class GraphHelper
         
         var planBuckets = new Dictionary<String, List<PlanBucket>>();
 
+        //TODO: Create buckets = lists (trello)
+        //TODO: Create tasks = cards (trello)
+        //TODO: Create conversations = comments (trello)
+        //TODO: Create checklists = checklists
+        //TODO: Check for any data that trello has that doesnt fit very well into Planner (hopefully none)
+        //TODO: Print logs for entire process, and pause on errors
+        
+        
     }
 }

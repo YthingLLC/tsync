@@ -53,7 +53,7 @@ while (choice != 0)
             await MakeGraphCallAsync();
             break;
         case 5:
-            await GraphHelper.GetTrelloBoards();
+            await GraphHelper.Trello();
             break;
         default:
             Console.WriteLine("Invalid choice! Please try again.");
