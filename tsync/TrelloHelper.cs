@@ -76,37 +76,71 @@ public static class TrelloHelper
 
    
 
-   async public static Task GetAllOrgs()
+   async public static Task<List<TOrg>?> GetAllOrgs()
    {
        var resp = await TrelloApiReq("members/me/organizations");
 
        if (resp is null)
        {
-           return;
+           return null;
        }
 
        //Console.WriteLine(resp);
        
        var orgs = Deserialize<List<TOrg>>(resp);
 
-       if (orgs is null || orgs.Count == 0)
+       //                                     yes, this should always be false
+       //                                     but jsonserializer.deserialize doesn't agree!
+       //                                     this may be null if deserialization quietly fails
+       //                  which sets this == 1, because reasons I guess?
+       // and makes this not null, just for fun debugging times
+       if (orgs is null || orgs.Count == 0 || orgs[0].Id is null)
        {
            Console.WriteLine("Error: Unable to retrieve orgs from Trello");
-           return;
+           return null;
        }
 
-       Console.WriteLine($"Total Orgs: {orgs.Count}");
+       //Console.WriteLine($"Total Orgs: {orgs.Count}");
        
+       //foreach (var org in orgs)
+       //{
+       //    Console.WriteLine($"{org.Id} - {org.DisplayName}");
+       //    Console.WriteLine($"{org.DomainName} - {org.MembersCount}");
+
+       //    foreach (var board in org.IdBoards)
+       //    {
+       //        Console.WriteLine($"----{board}");
+       //    }
+       //}
+
+       return orgs;
+
+   }
+
+   async public static Task<List<TBoard>?> GetAllOrgBoards(List<TOrg> orgs)
+   {
+       var resps = new List<Task<String?>>();
        foreach (var org in orgs)
        {
-           Console.WriteLine($"{org.Id} - {org.DisplayName}");
-           Console.WriteLine($"{org.DomainName} - {org.MembersCount}");
-
+           //resps.Add(TrelloApiReq($"organizations/{org.Id}/boards"));
            foreach (var board in org.IdBoards)
            {
-               Console.WriteLine($"----{board}");
+               resps.Add(TrelloApiReq($"boards/{board}", "lists=all"));
            }
        }
 
+       var ret = new List<TBoard>();
+       foreach (var resp in resps)
+       {
+           var json = await resp;
+           if (json is null)
+           {
+               continue;
+           }
+           var board = Deserialize<TBoard>(json);
+           ret.Add(board);
+       }
+
+       return ret;
    }
 }

@@ -5,7 +5,8 @@ Console.WriteLine("tsync - trello to ms planner sync tool\n");
 var settings = Settings.LoadSettings();
 
 TrelloHelper.SetCredentials(settings.TrelloApiKey, settings.TrelloUserToken);
-await TrelloHelper.GetAllOrgs();
+var orgs = await TrelloHelper.GetAllOrgs();
+var boards = await TrelloHelper.GetAllOrgBoards(orgs);
 
 throw new NotImplementedException();
 
