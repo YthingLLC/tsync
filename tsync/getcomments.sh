@@ -1,0 +1,1 @@
+curl --request GET --url "https://api.trello.com/1/cards/64e90c54a9fe46fc7531b41e/actions?key=$(jq -r '.settings .trelloApiKey'  < appsettings.json)&token=$(jq -r ".settings .trelloUserToken" < appsettings.json)&filter=commentCard" --header 'Accept: application/json' | jq '.[] | {id, memberCreator, date, data}'
