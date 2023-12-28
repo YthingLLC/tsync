@@ -143,4 +143,97 @@ public static class TrelloHelper
 
        return ret;
    }
+
+   public async static Task<List<TCard>?> GetCardsForBoard(String boardId)
+   {
+
+       var resp = await TrelloApiReq($"boards/{boardId}/cards/all");
+
+       if (resp is null)
+       {
+           Console.WriteLine($"Error: Unable to retrieve cards for board {boardId}");
+           return null;
+       }
+
+       var ret = Deserialize<List<TCard>>(resp);
+
+       return ret;
+
+   }
+
+   static TBoard ReassembleTBoardWithCardsDictionary(TBoard input, Dictionary<String, List<TCard>)
+   {
+       
+   }
+   
+   async public static Task<List<TBoard>> GetCardsForBoardList(List<TBoard> boards)
+   {
+       var ret = new List<TBoard>();
+       foreach (var b in boards)
+       {
+           var cardDict = new Dictionary<String, List<TCard>>();
+
+           foreach (var l in b.Lists)
+           {
+               cardDict.Add(l.Id, new List<TCard>());
+           }
+
+           var cards = await GetCardsForBoard(b.Id);
+
+           if (cards is null)
+           {
+               Console.WriteLine($"INFO: No cards for board {b.Id}");
+               continue;
+           }
+           
+           foreach (var c in cards)
+           {
+               List<TCard>? list;
+               if (!cardDict.TryGetValue(c.IdList, out list))
+               {
+                   cardDict.Add(c.IdList, new List<TCard>());
+                   list = cardDict[c.IdList];
+               }
+
+               if (list is null)
+               {
+                   Console.WriteLine("Error: Unable to retrieve list to store card! Internal Application Error!");
+               }
+               
+               
+               list.Add(c);
+           }
+
+           Console.WriteLine($"{cardDict.Count}");
+           
+           foreach (var l in b.Lists.ToList())
+           {
+               Console.WriteLine($"{l.Id}");
+               List<TCard>? cardsD;
+               
+               if (!cardDict.TryGetValue(l.Id, out cardsD))
+               {
+                   Console.WriteLine($"Error: {l.Id} Unknown List!");
+               }
+
+               if (cardsD is null)
+               {
+                   Console.WriteLine($"INFO: No cards for list {l.Id}");
+                   continue;
+               }
+
+               l.AddCards(cardsD);
+               Console.WriteLine($"{l.Cards.Count}");
+           }
+           
+           ret.Add(b);
+
+           Console.WriteLine($"Got all cards for {b.Id} - {b.Name}");
+       }
+
+       
+       Console.WriteLine("Got All Cards");
+
+       throw new NotImplementedException();
+   }
 }
