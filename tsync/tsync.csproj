@@ -6,7 +6,9 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <SelfContained>true</SelfContained>
-        <PublishSingleFile>true</PublishSingleFile>
+        <!--https://youtrack.jetbrains.com/issue/RIDER-56918/Cannot-start-debugging-net5-project-on-Linux-when-using-PublishSingleFile-in-.proj-file-->
+        <!--Come on JetBrains, this has been an issue for years now!-->
+        <PublishSingleFile Condition="'$(Configuration)' == 'Release'">true</PublishSingleFile>
         <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
         <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
         <PublishReadyToRunComposite>true</PublishReadyToRunComposite>
