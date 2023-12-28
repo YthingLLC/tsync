@@ -27,7 +27,6 @@
       <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
       <PackageReference Include="Microsoft.Extensions.Configuration.UserSecrets" Version="8.0.0" />
       <PackageReference Include="Microsoft.Graph" Version="5.37.0" />
-      <PackageReference Include="Manatee.Trello" Version="4.4.3" />
 
     </ItemGroup>
 

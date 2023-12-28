@@ -3,8 +3,9 @@ using Azure.Identity;
 using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Me.SendMail;
-using Manatee.Trello;
-using List = Manatee.Trello.List;
+using tsync;
+//using Manatee.Trello;
+//using List = Manatee.Trello.List;
 
 class GraphHelper
 {
@@ -316,80 +317,26 @@ class GraphHelper
         return ret;
     }
 
-    async static Task<List<IBoard>> GetAllTrelloBoards()
+    async static Task<List<TBoard>?> GetAllTrelloBoards()
     {
+        if (_settings is null || _settings.TrelloApiKey is null || _settings.TrelloUserToken is null)
+        {
+            Console.WriteLine("Required TrelloApiKey and TrelloUserToken in appsettings.json");
+            return null;
+        }
+        
         Console.WriteLine("If this does not work, generate a new token, and update appsettings.json");
         Console.WriteLine(
             $"https://trello.com/1/authorize?expiration=never&name=MyPersonalToken&scope=read&response_type=token&key={_settings.TrelloApiKey}");
 
-        TrelloAuthorization.Default.AppKey = _settings.TrelloApiKey;
-        TrelloAuthorization.Default.UserToken = _settings.TrelloUserToken;
-        //TrelloConfiguration.EnableConsistencyProcessing = true;
-        Board.DownloadedFields |= Board.Fields.Cards;
-        Board.DownloadedFields |= Board.Fields.Lists;
-        Board.DownloadedFields |= Board.Fields.CustomFields;
-        Board.DownloadedFields |= Board.Fields.Labels;
+        //TrelloAuthorization.Default.AppKey = _settings.TrelloApiKey;
+        //TrelloAuthorization.Default.UserToken = _settings.TrelloUserToken;
 
-        //Card.DownloadedFields |= Card.Fields.CustomFields;
-        //Card.DownloadedFields |= Card.Fields.Comments;
-        //Card.DownloadedFields |= Card.Fields.Attachments;
-        //Card.DownloadedFields |= Card.Fields.Checklists;
-        //Card.DownloadedFields |= Card.Fields.Description;
-        //Card.DownloadedFields |= Card.Fields.Name;
-        //Card.DownloadedFields |= Card.Fields.IsArchived;
-
-        //List.DownloadedFields |= List.Fields.Name;
-        //List.DownloadedFields |= List.Fields.Cards;
-
-        var factory = new TrelloFactory();
-        
-        var me = await factory.Me();
-        
-        //required, as factory.Me() does not get these, separate API calls
-        //there may be a better way to do this, but idc right now
-        await me.Organizations.Refresh();
-        await me.Boards.Refresh();
-        
-        //Console.WriteLine($"User ID:   {me.Id}");
-        //Console.WriteLine($"User Name: {me.UserName}");
-        //Console.WriteLine($"Orgs:      {me.Organizations.Count()}");
-        //Console.WriteLine($"My Boards: {me.Boards.Count()}");
-
-        var ret = new List<IBoard>();
-        
-        //Console.WriteLine("My boards: ");
-        //foreach (var b in me.Boards)
-        //{
-        //    Console.WriteLine(b.Name);
-        //}
-        //
-        //Console.WriteLine("My orgs: ");
-        
-        foreach (var o in me.Organizations)
-        {
-            //Console.WriteLine(o.DisplayName);
-            o.Boards.Filter(BoardFilter.All);
-            
-            await o.Boards.Refresh();
-            
-            //Console.WriteLine($"---- Boards: {o.Boards.Count()} ");
-        
-            foreach (var b in o.Boards)
-            {
-                b.Cards.Filter(CardFilter.All);
-                b.Lists.Filter(ListFilter.All);
-                await b.Refresh();
-                //Console.WriteLine($"---- {b.Id} {b.Name}");
-                ret.Add(b);
-            }
-            
-        }
-
-        return ret;
+        throw new NotImplementedException();
     }
 
     //TODO: Implement attachment downloading
-    async static Task DownloadAttachment(ICard card)
+    async static Task DownloadAttachment(TCard card)
     {
         throw new NotImplementedException();
     }
@@ -411,6 +358,12 @@ class GraphHelper
 
         var trelloBoards = await GetAllTrelloBoards();
 
+        if (trelloBoards is null)
+        {
+            Console.WriteLine("Unable to retrieve trello boards.");
+            return;
+        }
+
         Console.WriteLine($"Total Boards: {trelloBoards.Count} ");
 
         Int32 totalBoards = 0,
@@ -430,23 +383,20 @@ class GraphHelper
             foreach (var l in b.Lists)
             {
                 totalLists++;
-                await l.Cards.Refresh();
                 Console.WriteLine($"----{l.Name} ({l.Cards.Count()} cards)");
                 foreach (var c in l.Cards)
                 {
-                    if (c.IsArchived.GetValueOrDefault())
+                    if (c.IsArchived)
                     {
                         totalArchived++;
                     }
                     totalCards++;
-                    //await c.Comments.Refresh();
-                    //await c.CheckLists.Refresh();
                     Console.WriteLine($"++++Name: {c.Name}");
                     Console.WriteLine($"++++Desc: {c.Description}");
                     Console.WriteLine($"++++Atta: {c.Attachments.Count()}");
                     totalAttachments += c.Attachments.Count();
-                    Console.WriteLine($"++++CFld: {c.CustomFields.Count()}");
-                    totalCustomFields += c.CustomFields.Count();
+                    //Console.WriteLine($"++++CFld: {c.CustomFields.Count()}");
+                    //totalCustomFields += c.CustomFields.Count();
                     Console.WriteLine($"++++Coms: {c.Comments.Count()}");
                     totalComments += c.Comments.Count();
                     Console.WriteLine($"++++Clst: {c.CheckLists.Count()}");
@@ -455,6 +405,8 @@ class GraphHelper
             }
         }
 
+        Console.WriteLine($"Total Bords: {totalBoards} = {trelloBoards.Count}");
+        Console.WriteLine($"Total Lists: {totalLists}");
         Console.WriteLine($"Total Cards: {totalCards}");
         Console.WriteLine($"Total Archd: {totalArchived}");
         Console.WriteLine($"Total Attch: {totalAttachments}");
