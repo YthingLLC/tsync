@@ -1,6 +1,13 @@
-﻿Console.WriteLine("tsync - trello to ms planner sync tool\n");
+﻿using tsync;
+
+Console.WriteLine("tsync - trello to ms planner sync tool\n");
 
 var settings = Settings.LoadSettings();
+
+TrelloHelper.SetCredentials(settings.TrelloApiKey, settings.TrelloUserToken);
+await TrelloHelper.GetAllOrgs();
+
+throw new NotImplementedException();
 
 // Initialize Graph
 InitializeGraph(settings);

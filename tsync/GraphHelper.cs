@@ -329,10 +329,12 @@ class GraphHelper
         Console.WriteLine(
             $"https://trello.com/1/authorize?expiration=never&name=MyPersonalToken&scope=read&response_type=token&key={_settings.TrelloApiKey}");
 
-        //TrelloAuthorization.Default.AppKey = _settings.TrelloApiKey;
-        //TrelloAuthorization.Default.UserToken = _settings.TrelloUserToken;
+        TrelloHelper.SetCredentials(_settings.TrelloApiKey, _settings.TrelloUserToken);
+
+        await TrelloHelper.GetAllOrgs();
 
         throw new NotImplementedException();
+
     }
 
     //TODO: Implement attachment downloading
