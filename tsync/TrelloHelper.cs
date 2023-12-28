@@ -147,7 +147,7 @@ public static class TrelloHelper
    public async static Task<List<TCard>?> GetCardsForBoard(String boardId)
    {
 
-       var resp = await TrelloApiReq($"boards/{boardId}/cards/all");
+       var resp = await TrelloApiReq($"boards/{boardId}/cards/all", "attachments=true&checklists=all");
 
        if (resp is null)
        {
@@ -161,10 +161,25 @@ public static class TrelloHelper
 
    }
 
-   static TBoard ReassembleTBoardWithCardsDictionary(TBoard input, Dictionary<String, List<TCard>)
+   static TBoard ReassembleTBoardWithCardsDictionary(TBoard input, Dictionary<String, List<TCard>> cardsDict)
    {
-       
+       var tlists = new List<TList>();
+       foreach (var kvp in cardsDict)
+       {
+           TList? listInfo = input.Lists.Find(l => l.Id == kvp.Key);
+
+           if (listInfo is null)
+           {
+               Console.WriteLine($"Error: Internal - Unknown List {kvp.Key}");
+               continue;
+           }
+           
+           tlists.Add(new TList(listInfo.Value.Id, listInfo.Value.Name, listInfo.Value.Closed, kvp.Value));
+       }
+
+       return new TBoard(input.Id, input.Name, tlists);
    }
+   
    
    async public static Task<List<TBoard>> GetCardsForBoardList(List<TBoard> boards)
    {
@@ -185,7 +200,8 @@ public static class TrelloHelper
                Console.WriteLine($"INFO: No cards for board {b.Id}");
                continue;
            }
-           
+
+           Int32 attachmentCount = 0, commentCount = 0, checkListcount = 0;
            foreach (var c in cards)
            {
                List<TCard>? list;
@@ -204,36 +220,13 @@ public static class TrelloHelper
                list.Add(c);
            }
 
-           Console.WriteLine($"{cardDict.Count}");
+           ret.Add(ReassembleTBoardWithCardsDictionary(b, cardDict));
            
-           foreach (var l in b.Lists.ToList())
-           {
-               Console.WriteLine($"{l.Id}");
-               List<TCard>? cardsD;
-               
-               if (!cardDict.TryGetValue(l.Id, out cardsD))
-               {
-                   Console.WriteLine($"Error: {l.Id} Unknown List!");
-               }
-
-               if (cardsD is null)
-               {
-                   Console.WriteLine($"INFO: No cards for list {l.Id}");
-                   continue;
-               }
-
-               l.AddCards(cardsD);
-               Console.WriteLine($"{l.Cards.Count}");
-           }
-           
-           ret.Add(b);
-
-           Console.WriteLine($"Got all cards for {b.Id} - {b.Name}");
+           Console.WriteLine($"Got all cards ({cards.Count}) for {b.Id} - {b.Name}");
        }
 
-       
-       Console.WriteLine("Got All Cards");
+       Console.WriteLine("Complete: Got All Cards");
 
-       throw new NotImplementedException();
+       return ret;
    }
 }
