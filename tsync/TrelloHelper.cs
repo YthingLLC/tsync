@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using ComposableAsync;
+using RateLimiter;
 
 namespace tsync;
 
@@ -30,6 +32,11 @@ public static class TrelloHelper
    //https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/character-casing
    //https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/configure-options?pivots=dotnet-8-0#web-defaults-for-jsonserializeroptions
    private static readonly JsonSerializerOptions JsonDefaultOpts = new(JsonSerializerDefaults.Web);
+
+   //https://developer.atlassian.com/cloud/trello/guides/rest-api/rate-limits/
+   //Official rate limit is 100 per 10 seconds, generally.
+   //set to 9/sec to allow for "smoother" requests. 90/10secs gets "bursty" traffic
+   private static readonly TimeLimiter TrelloApiLimiter = TimeLimiter.GetFromMaxCountByInterval(9, TimeSpan.FromSeconds(1));
    
    private static String downloadPath = "./attachments/";
    
@@ -43,11 +50,13 @@ public static class TrelloHelper
    //file name on disk will not match the filename that was set by trello, it will be a new Guid
    async private static Task<String?> DownloadAttachment(TAttachment attachment)
    {
+       await TrelloApiLimiter;
        return null;
    }
 
    async private static Task<String?> TrelloApiReq(String endpoint, String? param = null)
    {
+       await TrelloApiLimiter;
        var url = $"{endpoint}?key={TrelloApiKey}&token={TrelloUserToken}";
        if (param is not null)
        {
@@ -144,6 +153,37 @@ public static class TrelloHelper
        return ret;
    }
 
+   async static Task<TCard> GetCommentsForTCard(TCard card)
+   {
+       //await TrelloApiLimiter;
+       //var comments = new List<TComment>();
+
+       var resp = await TrelloApiReq($"cards/{card.Id}/actions", "filter=commentCard");
+       
+       Console.Write(".");
+
+       if (resp is null)
+       {
+           Console.WriteLine($"Error retrieving comments for card {card.Id}");
+           //we're returning the original card, because no comments could be retrieved
+           return card;
+       }
+       
+       var respComm = Deserialize<List<TComment>>(resp);
+       
+       //comments.Add(new TComment("123", new TMember("123", "456", "789"), new TCommentData("Test Comment. Please Ignore")));
+
+       if (respComm is null)
+       {
+           Console.WriteLine("Error: Internal application error, unable to deserialize response from Trello");
+           //same here, can't get comments, so returning the original card
+           return card;
+       }
+
+       //return new TCard(card, comments);
+       return new TCard(card, respComm);
+   }
+
    public async static Task<List<TCard>?> GetCardsForBoard(String boardId)
    {
 
@@ -155,7 +195,23 @@ public static class TrelloHelper
            return null;
        }
 
-       var ret = Deserialize<List<TCard>>(resp);
+       var respCards = Deserialize<List<TCard>>(resp);
+
+       var ret = new List<TCard>();
+
+       var commentTasks = new List<Task<TCard>>();
+
+       Console.WriteLine($"Getting Comments for cards on board {boardId}");
+       
+       foreach (var c in respCards)
+       {
+           commentTasks.Add(GetCommentsForTCard(c));
+       }
+
+       foreach (var t in commentTasks)
+       {
+           ret.Add(await t);
+       }
 
        return ret;
 
@@ -184,6 +240,7 @@ public static class TrelloHelper
    async public static Task<List<TBoard>> GetCardsForBoardList(List<TBoard> boards)
    {
        var ret = new List<TBoard>();
+       Int32 totalCards = 0;
        foreach (var b in boards)
        {
            var cardDict = new Dictionary<String, List<TCard>>();
@@ -213,7 +270,8 @@ public static class TrelloHelper
 
                if (list is null)
                {
-                   Console.WriteLine("Error: Unable to retrieve list to store card! Internal Application Error!");
+                   Console.WriteLine($"Error: Unable to retrieve list {c.IdList} to store card! Internal Application Error!");
+                   continue;
                }
                
                
@@ -221,12 +279,25 @@ public static class TrelloHelper
            }
 
            ret.Add(ReassembleTBoardWithCardsDictionary(b, cardDict));
-           
+
+           totalCards += cards.Count;
            Console.WriteLine($"Got all cards ({cards.Count}) for {b.Id} - {b.Name}");
        }
 
-       Console.WriteLine("Complete: Got All Cards");
+       Console.WriteLine($"Complete: Got All ({totalCards}) Cards");
 
+       FileStream fs = new FileStream("/home/david/RiderProjects/tsync/tsync/data.json", FileMode.Create);
+       
+       var serial = JsonSerializer.Serialize(ret);
+
+       StreamWriter sw = new StreamWriter(fs);
+       
+       sw.Write(serial);
+       
+       sw.Close();
+       
+       fs.Close();
+       
        return ret;
    }
 }

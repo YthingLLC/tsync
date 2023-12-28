@@ -7,6 +7,8 @@ var settings = Settings.LoadSettings();
 TrelloHelper.SetCredentials(settings.TrelloApiKey, settings.TrelloUserToken);
 var orgs = await TrelloHelper.GetAllOrgs();
 var boards = await TrelloHelper.GetAllOrgBoards(orgs);
+await TrelloHelper.GetCardsForBoardList(boards);
+
 
 throw new NotImplementedException();
 

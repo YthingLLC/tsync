@@ -27,7 +27,7 @@ public struct TCard
 
 
     public TCard(String id, String idList, String name, String description, Boolean isArchived, DateTime start, DateTime due,
-        List<TCardLabel> labels, List<TComment> comments, List<TCheckList> checkLists, List<TAttachment> attachments)
+        List<TCardLabel> labels, List<TCheckList> checkLists, List<TAttachment> attachments)
     {
         Id = id;
         IdList = idList;
@@ -37,9 +37,24 @@ public struct TCard
         Start = start;
         Due = due;
         Labels = labels;
-        Comments = comments;
+        Comments = new List<TComment>();
         Attachments = attachments;
         CheckLists = checkLists;
+    }
+
+    internal TCard(TCard card, List<TComment> comments)
+    {
+        Id = card.Id;
+        IdList = card.IdList;
+        Name = card.Name;
+        Description = card.Description;
+        IsArchived = card.IsArchived;
+        Start = card.Start;
+        Due = card.Due;
+        Labels = card.Labels;
+        Attachments = card.Attachments;
+        CheckLists = card.CheckLists;
+        Comments = comments;
     }
 
 }
