@@ -27,6 +27,8 @@ public static class TrelloHelper
 
    private static String? TrelloApiKey;
    private static String? TrelloUserToken;
+
+   private static String? DownloadPath;
    
    
    //https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/character-casing
@@ -38,14 +40,25 @@ public static class TrelloHelper
    //set to 9/sec to allow for "smoother" requests. 90/10secs gets "bursty" traffic
    private static readonly TimeLimiter TrelloApiLimiter = TimeLimiter.GetFromMaxCountByInterval(9, TimeSpan.FromSeconds(1));
    
-   private static String downloadPath = "./attachments/";
-   
-   public static void SetCredentials(String apiKey, String userToken)
+   public static void SetCredentials(String? apiKey, String? userToken)
    {
        TrelloApiKey = apiKey;
        TrelloUserToken = userToken;
    }
 
+   public static void SetDownloadPath(String? path)
+   {
+       DownloadPath = path;
+   }
+   
+   public static String GetDownloadFilePath(String filename)
+   {
+       if (DownloadPath is null)
+       {
+           return $"./{filename}";
+       }
+       return $"{DownloadPath}/{filename}";
+   }
    //returns the path to where the file was saved on disk
    //file name on disk will not match the filename that was set by trello, it will be a new Guid
    async private static Task<String?> DownloadAttachment(TAttachment attachment)
@@ -286,7 +299,7 @@ public static class TrelloHelper
 
        Console.WriteLine($"Complete: Got All ({totalCards}) Cards");
 
-       FileStream fs = new FileStream("/home/david/RiderProjects/tsync/tsync/data.json", FileMode.Create);
+       FileStream fs = new FileStream(GetDownloadFilePath($"data-export-{DateTime.UtcNow:yyyyMMdd.HHmmss.fff}.json"), FileMode.Create);
        
        var serial = JsonSerializer.Serialize(ret);
 

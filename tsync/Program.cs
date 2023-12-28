@@ -5,6 +5,8 @@ Console.WriteLine("tsync - trello to ms planner sync tool\n");
 var settings = Settings.LoadSettings();
 
 TrelloHelper.SetCredentials(settings.TrelloApiKey, settings.TrelloUserToken);
+TrelloHelper.SetDownloadPath(settings.DownloadPath);
+
 var orgs = await TrelloHelper.GetAllOrgs();
 var boards = await TrelloHelper.GetAllOrgBoards(orgs);
 await TrelloHelper.GetCardsForBoardList(boards);

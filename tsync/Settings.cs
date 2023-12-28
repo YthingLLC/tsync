@@ -10,6 +10,10 @@ public class Settings
     
     public string? TrelloUserToken { get; init; }
     
+    public string? DownloadPath { get; init; }
+
+    
+    
     public static Settings LoadSettings()
     {
         // Load settings
