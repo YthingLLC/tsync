@@ -17,7 +17,7 @@ public struct TAttachment
     /// From the Trello API, maybe this will be different from actual? *shrugs*
     /// If this is null, then it is probably just a URL to something else
     /// </summary>
-    public Int32 Bytes { get; init; }
+    public Int64? Bytes { get; init; }
     
     /// <summary>
     /// Appears to only be set to true for files stored in Trello

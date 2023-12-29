@@ -96,8 +96,6 @@ public static class TrelloHelper
        return JsonSerializer.Deserialize<T>(json, JsonDefaultOpts);
    }
 
-   
-
    async public static Task<List<TOrg>?> GetAllOrgs()
    {
        var resp = await TrelloApiReq("members/me/organizations");
@@ -248,7 +246,39 @@ public static class TrelloHelper
 
        return new TBoard(input.Id, input.Name, tlists);
    }
+
+   static FileStream GetFileStreamForCreateFile(String filename, Boolean relativeFilename = true)
+   {
+       if (relativeFilename)
+       {
+           filename = GetDownloadFilePath(filename);
+       }
+       
+       FileStream fs = new FileStream(filename, FileMode.Create);
+
+       return fs;
+   }
    
+   static StreamWriter GetStreamWriterForCreateFile(String filename, Boolean relativeFilename = true)
+   {
+       StreamWriter sw = new StreamWriter(GetFileStreamForCreateFile(filename, relativeFilename));
+
+       return sw;
+   }
+
+   async static Task WriteToFile(String filename, String contents)
+   {
+       var sw = GetStreamWriterForCreateFile(filename);
+       await sw.WriteAsync(contents);
+       sw.Close();
+   }
+
+   async static Task WriteToFile(String filename, Stream contents)
+   {
+       var fs = GetFileStreamForCreateFile(filename);
+       await contents.CopyToAsync(fs);
+       fs.Close();
+   }
    
    async public static Task<List<TBoard>> GetCardsForBoardList(List<TBoard> boards)
    {
@@ -271,7 +301,6 @@ public static class TrelloHelper
                continue;
            }
 
-           Int32 attachmentCount = 0, commentCount = 0, checkListcount = 0;
            foreach (var c in cards)
            {
                List<TCard>? list;
@@ -299,18 +328,129 @@ public static class TrelloHelper
 
        Console.WriteLine($"Complete: Got All ({totalCards}) Cards");
 
-       FileStream fs = new FileStream(GetDownloadFilePath($"data-export-{DateTime.UtcNow:yyyyMMdd.HHmmss.fff}.json"), FileMode.Create);
-       
        var serial = JsonSerializer.Serialize(ret);
 
-       StreamWriter sw = new StreamWriter(fs);
-       
-       sw.Write(serial);
-       
-       sw.Close();
-       
-       fs.Close();
+       Console.WriteLine("Exporting data to json file...");
+
+       await WriteToFile($"data-export-{DateTime.UtcNow:yyyyMMdd.HHmmss.fff}.json", serial);
+       await WriteToFile("data-export-latest.json", serial);
+
+       Console.WriteLine("Export completed.");
        
        return ret;
    }
+
+   async public static Task<List<TBoard>?> LoadBoardsFromFile(String filename, Boolean relativeFilename = true)
+   {
+       if (relativeFilename)
+       {
+           filename = GetDownloadFilePath(filename);
+       }
+
+       try
+       {
+           FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read);
+
+           var boards = await JsonSerializer.DeserializeAsync<List<TBoard>>(fs);
+
+           fs.Close();
+
+           return boards;
+       }
+       catch (Exception e)
+       {
+           Console.WriteLine($"Unable to load file: {e.Message}");
+           return null;
+       }
+   }
+
+   public static void PrintBoardStatistics(List<TBoard>? boards)
+   {
+       if (boards is null)
+       {
+           Console.WriteLine("Boards are not loaded!");
+           return;
+       }
+       
+       Int64 totalAttachments = 0,
+             totalAttachmentsCheck = 0,
+             totalAttachmentsSize = 0,
+             totalComments = 0,
+             totalCommentsCheck = 0,
+             totalCommentsLength = 0,
+             totalCards = 0,
+             totalCardsCheck = 0,
+             totalLists = 0,
+             totalListsCheck = 0,
+             totalBoards = 0;
+
+       Console.WriteLine("-----BOARD STATISTICS SUMMARY-----");
+       
+       foreach (var b in boards)
+       {
+           totalBoards++;
+           
+           Console.WriteLine($"Board {b.Id} - {b.Name}; Lists: {b.Lists.Count}");
+           totalLists += b.Lists.Count;
+
+           Int32 cardAttachments = 0, cardComments = 0, cardCount = 0;
+           
+           foreach (var l in b.Lists)
+           {
+               totalListsCheck++;
+
+               totalCards += l.Cards.Count;
+
+               foreach (var c in l.Cards)
+               {
+                   totalCardsCheck++;
+                   cardCount++;
+
+                   //Console.WriteLine($"----Card: {c.Id}");
+                   //Console.WriteLine($"+++++----Comments: {c.Comments.Count}");
+                   totalComments += c.Comments.Count;
+                   
+                   foreach (var comm in c.Comments)
+                   {
+                       totalCommentsCheck++;
+                       cardComments++;
+                       totalCommentsLength += comm.Data.Text.Length;
+                   }
+
+                   //Console.WriteLine($"++++----Attachments: {c.Attachments.Count}");
+                   totalAttachments += c.Attachments.Count;
+                   
+                   foreach (var attch in c.Attachments)
+                   {
+                       totalAttachmentsCheck++;
+                       cardAttachments++;
+
+                       if (attch.Bytes is not null)
+                       { 
+                           totalAttachmentsSize += attch.Bytes.Value;
+                       }
+                   }
+               }
+           }
+           
+           Console.WriteLine($"----Cards: {cardCount}");
+           Console.WriteLine($"----Comments: {cardComments}");
+           Console.WriteLine($"----Attachments: {cardAttachments}");
+       }
+
+
+       Console.WriteLine("Summary Statistics Check:");
+       Console.WriteLine($"       Boards: {totalBoards} == Reported Boards {boards.Count}");
+       Console.WriteLine($"        Lists: {totalListsCheck} == {totalLists}");
+       Console.WriteLine($"        Cards: {totalCardsCheck} == {totalCards}");
+       Console.WriteLine($"     Comments: {totalCommentsCheck} == {totalComments}");
+       Console.WriteLine($"Comment Chars: {totalCommentsLength} (from app, total lengths all comments)");
+       Console.WriteLine($"  Attachments: {totalAttachmentsCheck} == {totalAttachments}");
+       var gigasize = Convert.ToDouble(totalAttachmentsSize) / 1024 / 1024 / 1024; 
+       Console.WriteLine($" Total Size: {totalAttachmentsSize} bytes ~~ {gigasize} gigabytes (from API, actual may be different)");
+       
+       
+   }
+   
+   
 }
