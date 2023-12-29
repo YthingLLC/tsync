@@ -5,7 +5,6 @@ Console.WriteLine("tsync - trello to ms planner sync tool\n");
 var settings = Settings.LoadSettings();
 
 List<TBoard>? boards = null;
-Dictionary<String, FileMeta>? fileMetas = null;
 
 //Initialize TrelloHelper
 TrelloHelper.SetDownloadPath(settings.DownloadPath);
@@ -33,7 +32,7 @@ while (choice != 0)
     Console.WriteLine("1. Download Latest Trello Boards");
     Console.WriteLine("2. Load Previously Downloaded Data");
     Console.WriteLine("3. Print Board Statistics");
-    if (fileMetas is not null)
+    if (TrelloHelper.FileMetasLoaded)
     {
         Console.WriteLine("+++FileMetas Rendered+++");
     }
@@ -82,10 +81,10 @@ while (choice != 0)
             await LoadLatestFileMeta();
             break;
         case 6:
-            TrelloHelper.PrintFileMetaStatistics(fileMetas);
+            TrelloHelper.PrintFileMetaStatistics();
             break;
         case 7:
-            await TrelloHelper.DownloadAttachments(fileMetas);
+            await TrelloHelper.DownloadAttachments();
             break;
         
         case 10:
@@ -245,9 +244,9 @@ async Task LoadLatestFileMeta()
         filename = "filemeta/file-metadata-latest.json";
     }
 
-    fileMetas = await TrelloHelper.LoadFileMetaFromFile(filename);
+    await TrelloHelper.LoadFileMetaFromFile(filename);
 
-    if (fileMetas is not null)
+    if (TrelloHelper.FileMetasLoaded)
     {
         Console.WriteLine("File meta loaded successfully");
         Console.WriteLine();
@@ -261,9 +260,9 @@ async Task RenderAndSaveFileMetas()
         Console.WriteLine("Boards not yet loaded, download or restore previously downloaded");
         return;
     }
-    fileMetas = await TrelloHelper.RenderFileMeta(boards);
+    await TrelloHelper.RenderFileMeta(boards);
     
-    await TrelloHelper.SaveFileMeta(fileMetas);
+    await TrelloHelper.SaveFileMeta();
     
     Console.WriteLine("File metadata rendered and saved");
 }
@@ -274,11 +273,13 @@ async Task<List<TBoard>> DownloadTrelloBoards()
     var boards = await TrelloHelper.GetAllOrgBoards(orgs);
     boards = await TrelloHelper.GetCardsForBoardList(boards);
 
-    fileMetas = await TrelloHelper.RenderFileMeta(boards);
+    await TrelloHelper.RenderFileMeta(boards);
 
-    await TrelloHelper.SaveFileMeta(fileMetas);
+    await TrelloHelper.SaveFileMeta();
     
     TrelloHelper.PrintBoardStatistics(boards);
+
+    await TrelloHelper.SaveBoardsToFile(boards);
     
     return boards;
 }

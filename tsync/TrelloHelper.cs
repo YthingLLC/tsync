@@ -45,7 +45,8 @@ public static class TrelloHelper
    private static String NowFile => $"{DateTime.UtcNow:yyyyMMdd.HHmmss.fff}";
 
    private static Dictionary<String, FileMeta>? _fileMeta;
-   
+   public static Boolean FileMetasLoaded => _fileMeta is not null;
+
    public static void SetCredentials(String? apiKey, String? userToken)
    {
         TrelloApiKey = apiKey;
@@ -164,14 +165,14 @@ public static class TrelloHelper
        return attachment;
     }
 
-    async public static Task DownloadAttachments(Dictionary<String, FileMeta>? fileMetas)
+    async public static Task DownloadAttachments()
     {
-        if (fileMetas is null)
+        if (_fileMeta is null)
         {
             Console.WriteLine("File metas not loaded, please load or download boards from Trello");
             return;
         }
-        foreach (var f in fileMetas)
+        foreach (var f in _fileMeta)
         {
             Console.WriteLine($"Downloading {f.Key} - {f.Value.AttachmentData.Bytes} bytes");
             var resp = await DownloadAttachment(f.Value);
@@ -391,7 +392,6 @@ public static class TrelloHelper
        return new TBoard(input.Id, input.Name, tlists);
    }
   
-   //also saves the data downloaded, may refactor this out at a later date
    async public static Task<List<TBoard>> GetCardsForBoardList(List<TBoard> boards)
    {
        var ret = new List<TBoard>();
@@ -440,18 +440,21 @@ public static class TrelloHelper
 
        Console.WriteLine($"Complete: Got All ({totalCards}) Cards");
 
-       var serial = Serialize(ret);
-
-       Console.WriteLine("Exporting data to json file...");
-
-       await WriteToFile($"data-export-{NowFile}.json", serial);
-       await WriteToFile("data-export-latest.json", serial);
-
-       Console.WriteLine("Export completed.");
-       
        return ret;
    }
 
+   async public static Task SaveBoardsToFile(List<TBoard> boards)
+   {
+       var serial = Serialize(boards);
+       
+       Console.WriteLine("Exporting data to json file...");
+       
+       await WriteToFile($"data-export-{NowFile}.json", serial);
+       await WriteToFile("data-export-latest.json", serial);
+       
+       Console.WriteLine("Export completed.");
+   }
+   
    async public static Task<List<TBoard>?> LoadBoardsFromFile(String filename, Boolean relativeFilename = true)
    {
        return await DeserializeFromFile<List<TBoard>?>(filename, relativeFilename);
@@ -545,7 +548,7 @@ public static class TrelloHelper
        
    }
 
-   async public static Task<Dictionary<String, FileMeta>> RenderFileMeta(List<TBoard> boards)
+   async public static Task RenderFileMeta(List<TBoard> boards)
    {
        var ret = new Dictionary<String, FileMeta>();
        foreach (var b in boards)
@@ -564,7 +567,6 @@ public static class TrelloHelper
        }
 
        _fileMeta = ret;
-       return ret;
    }
 
    async static Task UpdateFileStatus(String fileId, Boolean complete, String? hash = null)
@@ -582,7 +584,7 @@ public static class TrelloHelper
                value.Complete = complete;
                value.Hash = hash;
                _fileMeta.AddOrReplace(fileId, value);
-               SaveFileMetaSync(_fileMeta);
+               SaveFileMetaSync();
            }
        }
    }
@@ -608,9 +610,14 @@ public static class TrelloHelper
        }
    }
    
-   static void SaveFileMetaSync(Dictionary<String, FileMeta> fileMetas)
+   static void SaveFileMetaSync()
    {
-       var serial = Serialize(fileMetas);
+       if (_fileMeta is null)
+       {
+           Console.WriteLine("Error: File Metas not loaded or rendered.");
+           return;
+       }
+       var serial = Serialize(_fileMeta);
 
        var metaPath = GetDownloadFilePath("filemeta");
 
@@ -624,9 +631,15 @@ public static class TrelloHelper
        
    }
 
-   async public static Task SaveFileMeta(Dictionary<String, FileMeta> fileMetas)
+   async public static Task SaveFileMeta()
    {
-       var serial = Serialize(fileMetas);
+       if (_fileMeta is null)
+       {
+           Console.WriteLine("Error: File Metas not loaded or rendered.");
+           return;
+       }
+       
+       var serial = Serialize(_fileMeta);
 
        var metaPath = GetDownloadFilePath("filemeta");
 
@@ -639,10 +652,9 @@ public static class TrelloHelper
        await WriteToFile($"filemeta/file-metadata-latest.json", serial);
    }
 
-   async public static Task<Dictionary<String, FileMeta>?> LoadFileMetaFromFile(String filename, Boolean relativeFilename = true)
+   async public static Task LoadFileMetaFromFile(String filename, Boolean relativeFilename = true)
    {
-       _fileMeta = await DeserializeFromFile<Dictionary<String, FileMeta>?>(filename, relativeFilename);
-       return _fileMeta;
+       await DeserializeFromFile<Dictionary<String, FileMeta>?>(filename, relativeFilename);
    }
 
    static Boolean CheckFileHash(String fileId, Dictionary<String, FileMeta>? fileMetas)
@@ -656,9 +668,9 @@ public static class TrelloHelper
        return false;
    }
 
-   public static void PrintFileMetaStatistics(Dictionary<String, FileMeta>? fileMetas)
+   public static void PrintFileMetaStatistics()
    {
-       if (fileMetas is null)
+       if (_fileMeta is null)
        {
            Console.WriteLine("File metas not yet loaded! Please restore or render file metas!");
            return;
@@ -666,7 +678,7 @@ public static class TrelloHelper
 
        Int64 attachmentCount = 0, completedCount = 0, verifiedHashes = 0, bytesRemaing = 0;
        
-       foreach (var f in fileMetas)
+       foreach (var f in _fileMeta)
        {
            attachmentCount++;
 
