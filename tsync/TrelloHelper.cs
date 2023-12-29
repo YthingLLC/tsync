@@ -40,6 +40,10 @@ public static class TrelloHelper
    //set to 9/sec to allow for "smoother" requests. 90/10secs gets "bursty" traffic
    private static readonly TimeLimiter TrelloApiLimiter = TimeLimiter.GetFromMaxCountByInterval(9, TimeSpan.FromSeconds(1));
    
+   private static String NowFile => $"{DateTime.UtcNow:yyyyMMdd.HHmmss.fff}";
+
+   private static Dictionary<String, FileMeta>? _fileMeta;
+   
    public static void SetCredentials(String? apiKey, String? userToken)
    {
        TrelloApiKey = apiKey;
@@ -61,7 +65,75 @@ public static class TrelloHelper
    }
    //returns the path to where the file was saved on disk
    //file name on disk will not match the filename that was set by trello, it will be a new Guid
-   async private static Task<String?> DownloadAttachment(TAttachment attachment)
+    static FileStream? GetFileStreamForCreateFile(String filename, Boolean relativeFilename = true)
+    {
+        if (relativeFilename)
+        {
+            filename = GetDownloadFilePath(filename);
+        }
+
+        try
+        {
+            FileStream fs = new FileStream(filename, FileMode.Create);
+            return fs;
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"Unable to open {filename} for writing, check to ensure that this is writable");
+            return null;
+        }
+ 
+    }
+    
+    static StreamWriter? GetStreamWriterForCreateFile(String filename, Boolean relativeFilename = true)
+    {
+        var fs = GetFileStreamForCreateFile(filename, relativeFilename);
+        if (fs is null)
+        {
+            Console.WriteLine("Null stream, unable to write file.");
+            return null;
+        }
+        
+        StreamWriter sw = new StreamWriter(fs);
+ 
+        return sw;
+    }
+
+    static void WriteToFileSync(String filename, String contents)
+    {
+        var sw = GetStreamWriterForCreateFile(filename);
+
+        if (sw is null)
+        {
+           Console.WriteLine($"Unable to write file {filename}, null streamwriter");
+           return;
+        }
+        
+        sw.Write(contents);
+        sw.Flush();
+        sw.Close();
+    }
+    async static Task WriteToFile(String filename, String contents)
+    {
+        var sw = GetStreamWriterForCreateFile(filename);
+        if (sw is null)
+        {
+            Console.WriteLine($"Unable to write file {filename}, null streamwriter");
+            return;
+        }
+        await sw.WriteAsync(contents);
+        await sw.FlushAsync();
+        sw.Close();
+    }
+ 
+    async static Task WriteToFile(String filename, Stream contents)
+    {
+        var fs = GetFileStreamForCreateFile(filename);
+        await contents.CopyToAsync(fs);
+        fs.Close();
+    }
+    
+    async private static Task<String?> DownloadAttachment(TAttachment attachment)
    {
        await TrelloApiLimiter;
        return null;
@@ -91,9 +163,38 @@ public static class TrelloHelper
 
    }
 
+   private static String Serialize<T>(T obj)
+   {
+       return JsonSerializer.Serialize<T>(obj, JsonDefaultOpts);
+   }
+   
    private static T? Deserialize<T>(String json)
    {
        return JsonSerializer.Deserialize<T>(json, JsonDefaultOpts);
+   }
+
+   async static Task<T?> DeserializeFromFile<T>(String filename, Boolean relativeFilename = true)
+   {
+       if (relativeFilename)
+       {
+           filename = GetDownloadFilePath(filename);
+       }
+       
+       try
+       {
+           FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read);
+       
+           var deserial = await JsonSerializer.DeserializeAsync<T>(fs, JsonDefaultOpts);
+       
+           fs.Close();
+       
+           return deserial;
+       }
+       catch (Exception e)
+       {
+           Console.WriteLine($"Unable to load file: {e.Message}");
+           return default;
+       }
    }
 
    async public static Task<List<TOrg>?> GetAllOrgs()
@@ -246,40 +347,8 @@ public static class TrelloHelper
 
        return new TBoard(input.Id, input.Name, tlists);
    }
-
-   static FileStream GetFileStreamForCreateFile(String filename, Boolean relativeFilename = true)
-   {
-       if (relativeFilename)
-       {
-           filename = GetDownloadFilePath(filename);
-       }
-       
-       FileStream fs = new FileStream(filename, FileMode.Create);
-
-       return fs;
-   }
-   
-   static StreamWriter GetStreamWriterForCreateFile(String filename, Boolean relativeFilename = true)
-   {
-       StreamWriter sw = new StreamWriter(GetFileStreamForCreateFile(filename, relativeFilename));
-
-       return sw;
-   }
-
-   async static Task WriteToFile(String filename, String contents)
-   {
-       var sw = GetStreamWriterForCreateFile(filename);
-       await sw.WriteAsync(contents);
-       sw.Close();
-   }
-
-   async static Task WriteToFile(String filename, Stream contents)
-   {
-       var fs = GetFileStreamForCreateFile(filename);
-       await contents.CopyToAsync(fs);
-       fs.Close();
-   }
-   
+  
+   //also saves the data downloaded, may refactor this out at a later date
    async public static Task<List<TBoard>> GetCardsForBoardList(List<TBoard> boards)
    {
        var ret = new List<TBoard>();
@@ -328,11 +397,11 @@ public static class TrelloHelper
 
        Console.WriteLine($"Complete: Got All ({totalCards}) Cards");
 
-       var serial = JsonSerializer.Serialize(ret);
+       var serial = Serialize(ret);
 
        Console.WriteLine("Exporting data to json file...");
 
-       await WriteToFile($"data-export-{DateTime.UtcNow:yyyyMMdd.HHmmss.fff}.json", serial);
+       await WriteToFile($"data-export-{NowFile}.json", serial);
        await WriteToFile("data-export-latest.json", serial);
 
        Console.WriteLine("Export completed.");
@@ -342,26 +411,7 @@ public static class TrelloHelper
 
    async public static Task<List<TBoard>?> LoadBoardsFromFile(String filename, Boolean relativeFilename = true)
    {
-       if (relativeFilename)
-       {
-           filename = GetDownloadFilePath(filename);
-       }
-
-       try
-       {
-           FileStream fs = new FileStream(filename, FileMode.Open, FileAccess.Read);
-
-           var boards = await JsonSerializer.DeserializeAsync<List<TBoard>>(fs);
-
-           fs.Close();
-
-           return boards;
-       }
-       catch (Exception e)
-       {
-           Console.WriteLine($"Unable to load file: {e.Message}");
-           return null;
-       }
+       return await DeserializeFromFile<List<TBoard>?>(filename, relativeFilename);
    }
 
    public static void PrintBoardStatistics(List<TBoard>? boards)
@@ -451,6 +501,143 @@ public static class TrelloHelper
        
        
    }
+
+   async public static Task<Dictionary<String, FileMeta>> RenderFileMeta(List<TBoard> boards)
+   {
+       var ret = new Dictionary<String, FileMeta>();
+       foreach (var b in boards)
+       {
+           foreach (var l in b.Lists)
+           {
+               foreach (var c in l.Cards)
+               {
+                   foreach (var a in c.Attachments)
+                   {
+                       var meta = new FileMeta(a);
+                       ret.Add(a.Id, meta);
+                   }
+               }
+           } 
+       }
+
+       _fileMeta = ret;
+       return ret;
+   }
+
+   async static Task UpdateFileStatus(String fileId, Boolean complete, String? hash = null)
+   {
+       if (_fileMeta is null)
+       {
+           Console.WriteLine("Unable to update file status, file meta has not yet been rendered. Load state, or download latest boards");
+           return;
+       }
+       lock (_fileMeta)
+       {
+           FileMeta value;
+           if (_fileMeta.TryGetValue(fileId, out value))
+           {
+               value.Complete = complete;
+               value.Hash = hash;
+               SaveFileMetaSync(_fileMeta);
+           }
+       }
+   }
+
+   static Boolean CheckDirExists(String path)
+   {
+       if (Directory.Exists(path))
+       {
+           return true;
+       }
+
+       try
+       {
+           //rumors on the internet say that this may leave dangling file handles open, hence why check for existence
+           //is done first, even though documentation says that this isn't strictly required
+           Directory.CreateDirectory(path);
+           return true;
+       }
+       catch (Exception e)
+       {
+           Console.WriteLine($"Unable to create directory, ensure that this location is writable: {path}");
+           return false;
+       }
+   }
    
+   static void SaveFileMetaSync(Dictionary<String, FileMeta> fileMetas)
+   {
+       var serial = Serialize(fileMetas);
+
+       var metaPath = GetDownloadFilePath("filemeta");
+
+       if (!CheckDirExists(metaPath))
+       {
+           return;
+       }
+       
+       WriteToFileSync($"filemeta/file-metadata-{NowFile}.json", serial);
+       WriteToFileSync($"filemeta/file-metadata-latest.json", serial);
+       
+   }
+
+   async public static Task SaveFileMeta(Dictionary<String, FileMeta> fileMetas)
+   {
+       var serial = Serialize(fileMetas);
+
+       var metaPath = GetDownloadFilePath("filemeta");
+
+       if (!CheckDirExists(metaPath))
+       {
+           return;
+       }
+
+       await WriteToFile($"filemeta/file-metadata-{NowFile}.json", serial);
+       await WriteToFile($"filemeta/file-metadata-latest.json", serial);
+   }
+
+   async public static Task<Dictionary<String, FileMeta>?> LoadFileMetaFromFile(String filename, Boolean relativeFilename = true)
+   {
+       return await DeserializeFromFile<Dictionary<String, FileMeta>?>(filename, relativeFilename);
+   }
+
+   static Boolean CheckFileHash(String fileId, Dictionary<String, FileMeta>? fileMetas)
+   {
+       if (fileMetas is null)
+       {
+           return false;
+       }
+
+       //TODO: Implement this
+       return false;
+   }
+
+   public static void PrintFileMetaStatistics(Dictionary<String, FileMeta>? fileMetas)
+   {
+       if (fileMetas is null)
+       {
+           Console.WriteLine("File metas not yet loaded! Please restore or render file metas!");
+           return;
+       }
+
+       Int64 attachmentCount = 0, completedCount = 0, verifiedHashes = 0, bytesRemaing = 0;
+       
+       foreach (var f in fileMetas)
+       {
+           attachmentCount++;
+
+           if (f.Value.Complete)
+           {
+               completedCount++;
+               //TODO: Implement file hash checking
+           }
+           else
+           {
+               bytesRemaing += f.Value.AttachmentData.Bytes.GetValueOrDefault();
+           }
+       }
+
+       Console.WriteLine($"There are {attachmentCount} attachments in the metadata, {completedCount} are completed, with {attachmentCount - completedCount} ({bytesRemaing} bytes) remaining.");
+       
+   }
    
 }
