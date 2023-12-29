@@ -7,6 +7,10 @@ var settings = Settings.LoadSettings();
 List<TBoard>? boards = null;
 Dictionary<String, FileMeta>? fileMetas = null;
 
+//Initialize TrelloHelper
+TrelloHelper.SetDownloadPath(settings.DownloadPath);
+TrelloHelper.SetCredentials(settings.TrelloApiKey, settings.TrelloUserToken);
+
 // Initialize Graph
 InitializeGraph(settings);
 
@@ -36,6 +40,7 @@ while (choice != 0)
     Console.WriteLine("4. Render Attachment metadata and save");
     Console.WriteLine("5. Load Attachment metadata from file");
     Console.WriteLine("6. Print Metadata Statistics");
+    Console.WriteLine("7. Download Incomplete Attachments");
 
     Console.WriteLine("---Graph Options---");
     Console.WriteLine("10. Make a Graph call");
@@ -78,6 +83,9 @@ while (choice != 0)
             break;
         case 6:
             TrelloHelper.PrintFileMetaStatistics(fileMetas);
+            break;
+        case 7:
+            await TrelloHelper.DownloadAttachments(fileMetas);
             break;
         
         case 10:
@@ -204,8 +212,6 @@ async Task SendMailAsync()
 
 async Task LoadDownloadedTrelloData()
 {
-    TrelloHelper.SetDownloadPath(settings.DownloadPath);
-    
     Console.WriteLine("Enter filename, or press enter to load `data-export-latest.json`");
     Console.WriteLine($"File must be in {settings.DownloadPath} directory!");
 
@@ -229,8 +235,6 @@ async Task LoadDownloadedTrelloData()
 
 async Task LoadLatestFileMeta()
 {
-    TrelloHelper.SetDownloadPath(settings.DownloadPath);
-
     Console.WriteLine("Enter filename, or press enter to load `filemeta/file-metadata-latest.json");
     Console.WriteLine($"File must be in {settings.DownloadPath} directory!");
 
@@ -266,9 +270,6 @@ async Task RenderAndSaveFileMetas()
 
 async Task<List<TBoard>> DownloadTrelloBoards()
 {
-    TrelloHelper.SetCredentials(settings.TrelloApiKey, settings.TrelloUserToken);
-    TrelloHelper.SetDownloadPath(settings.DownloadPath);
-    
     var orgs = await TrelloHelper.GetAllOrgs();
     var boards = await TrelloHelper.GetAllOrgBoards(orgs);
     boards = await TrelloHelper.GetCardsForBoardList(boards);

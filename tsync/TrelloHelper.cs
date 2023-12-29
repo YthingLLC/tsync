@@ -1,6 +1,8 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
+using Azure;
 using ComposableAsync;
+using Microsoft.Kiota.Abstractions.Extensions;
 using RateLimiter;
 
 namespace tsync;
@@ -46,8 +48,8 @@ public static class TrelloHelper
    
    public static void SetCredentials(String? apiKey, String? userToken)
    {
-       TrelloApiKey = apiKey;
-       TrelloUserToken = userToken;
+        TrelloApiKey = apiKey;
+        TrelloUserToken = userToken;    
    }
 
    public static void SetDownloadPath(String? path)
@@ -133,13 +135,54 @@ public static class TrelloHelper
         fs.Close();
     }
     
-    async private static Task<String?> DownloadAttachment(TAttachment attachment)
-   {
+    async private static Task<FileMeta> DownloadAttachment(FileMeta attachment)
+    {
        await TrelloApiLimiter;
-       return null;
-   }
 
-   async private static Task<String?> TrelloApiReq(String endpoint, String? param = null)
+       if (!attachment.AttachmentData.IsUpload || attachment.Complete)
+       {
+           return attachment;
+       }
+       
+       HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, new Uri($"{attachment.AttachmentData.Url}"));
+       request.Headers.Add("Authorization", $"OAuth oauth_consumer_key=\"{TrelloApiKey}\", oauth_token=\"{TrelloUserToken}\"");
+
+       var resp = await _attachmentClient.SendAsync(request);
+
+       if (!resp.IsSuccessStatusCode)
+       {
+           Console.WriteLine($"Error: Failed to download {attachment.AttachmentData.Id} - [{resp.StatusCode}] Server said: {resp.ReasonPhrase}");
+           return attachment;
+       }
+       
+       var respBody = await resp.Content.ReadAsStreamAsync();
+
+       await WriteToFile($"{attachment.FileID}.file", respBody);
+
+       attachment.Complete = true;
+
+       return attachment;
+    }
+
+    async public static Task DownloadAttachments(Dictionary<String, FileMeta>? fileMetas)
+    {
+        if (fileMetas is null)
+        {
+            Console.WriteLine("File metas not loaded, please load or download boards from Trello");
+            return;
+        }
+        foreach (var f in fileMetas)
+        {
+            Console.WriteLine($"Downloading {f.Key} - {f.Value.AttachmentData.Bytes} bytes");
+            var resp = await DownloadAttachment(f.Value);
+            if (resp.Complete)
+            {
+                await UpdateFileStatus(f.Key, true);
+            }
+        }
+    }
+
+    async private static Task<String?> TrelloApiReq(String endpoint, String? param = null)
    {
        await TrelloApiLimiter;
        var url = $"{endpoint}?key={TrelloApiKey}&token={TrelloUserToken}";
@@ -538,6 +581,7 @@ public static class TrelloHelper
            {
                value.Complete = complete;
                value.Hash = hash;
+               _fileMeta.AddOrReplace(fileId, value);
                SaveFileMetaSync(_fileMeta);
            }
        }
@@ -597,7 +641,8 @@ public static class TrelloHelper
 
    async public static Task<Dictionary<String, FileMeta>?> LoadFileMetaFromFile(String filename, Boolean relativeFilename = true)
    {
-       return await DeserializeFromFile<Dictionary<String, FileMeta>?>(filename, relativeFilename);
+       _fileMeta = await DeserializeFromFile<Dictionary<String, FileMeta>?>(filename, relativeFilename);
+       return _fileMeta;
    }
 
    static Boolean CheckFileHash(String fileId, Dictionary<String, FileMeta>? fileMetas)
@@ -629,6 +674,7 @@ public static class TrelloHelper
            {
                completedCount++;
                //TODO: Implement file hash checking
+               //TODO: Implement file size checking against metadata
            }
            else
            {
