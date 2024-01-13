@@ -4,8 +4,6 @@ using Microsoft.Graph;
 using Microsoft.Graph.Models;
 using Microsoft.Graph.Me.SendMail;
 using tsync;
-//using Manatee.Trello;
-//using List = Manatee.Trello.List;
 
 class GraphHelper
 {
@@ -317,26 +315,6 @@ class GraphHelper
         return ret;
     }
 
-    async static Task<List<TBoard>?> GetAllTrelloBoards()
-    {
-        if (_settings is null || _settings.TrelloApiKey is null || _settings.TrelloUserToken is null)
-        {
-            Console.WriteLine("Required TrelloApiKey and TrelloUserToken in appsettings.json");
-            return null;
-        }
-        
-        Console.WriteLine("If this does not work, generate a new token, and update appsettings.json");
-        Console.WriteLine(
-            $"https://trello.com/1/authorize?expiration=never&name=MyPersonalToken&scope=read&response_type=token&key={_settings.TrelloApiKey}");
-
-        TrelloHelper.SetCredentials(_settings.TrelloApiKey, _settings.TrelloUserToken);
-
-        await TrelloHelper.GetAllOrgs();
-
-        throw new NotImplementedException();
-
-    }
-
     //TODO: Implement attachment downloading
     async static Task DownloadAttachment(TCard card)
     {
@@ -353,69 +331,6 @@ class GraphHelper
         //URLs are encoded, idk if the API needs this or if it will take unencoded URLs, probably not
 
         throw new NotImplementedException();
-    }
-
-    public async static Task Trello()
-    {
-
-        var trelloBoards = await GetAllTrelloBoards();
-
-        if (trelloBoards is null)
-        {
-            Console.WriteLine("Unable to retrieve trello boards.");
-            return;
-        }
-
-        Console.WriteLine($"Total Boards: {trelloBoards.Count} ");
-
-        Int32 totalBoards = 0,
-            totalLists = 0,
-            totalCards = 0,
-            totalAttachments = 0,
-            totalCustomFields = 0,
-            totalComments = 0,
-            totalChecklists = 0,
-            totalArchived = 0;
-        
-        foreach (var b in trelloBoards)
-        {
-            totalBoards++;
-            Console.WriteLine($"Board: {b.Id} {b.Name}");
-            Console.WriteLine("Lists:");
-            foreach (var l in b.Lists)
-            {
-                totalLists++;
-                Console.WriteLine($"----{l.Name} ({l.Cards.Count()} cards)");
-                foreach (var c in l.Cards)
-                {
-                    if (c.IsArchived)
-                    {
-                        totalArchived++;
-                    }
-                    totalCards++;
-                    Console.WriteLine($"++++Name: {c.Name}");
-                    Console.WriteLine($"++++Desc: {c.Description}");
-                    Console.WriteLine($"++++Atta: {c.Attachments.Count()}");
-                    totalAttachments += c.Attachments.Count();
-                    //Console.WriteLine($"++++CFld: {c.CustomFields.Count()}");
-                    //totalCustomFields += c.CustomFields.Count();
-                    Console.WriteLine($"++++Coms: {c.Comments.Count()}");
-                    totalComments += c.Comments.Count();
-                    Console.WriteLine($"++++Clst: {c.CheckLists.Count()}");
-                    totalChecklists = c.CheckLists.Count();
-                }
-            }
-        }
-
-        Console.WriteLine($"Total Bords: {totalBoards} = {trelloBoards.Count}");
-        Console.WriteLine($"Total Lists: {totalLists}");
-        Console.WriteLine($"Total Cards: {totalCards}");
-        Console.WriteLine($"Total Archd: {totalArchived}");
-        Console.WriteLine($"Total Attch: {totalAttachments}");
-        Console.WriteLine($"Total Cflds: {totalCustomFields}");
-        Console.WriteLine($"Total Comms: {totalComments}");
-        Console.WriteLine($"Total Clist: {totalChecklists}");
-
     }
     
     //the Graph API (v1) does not have the ability to create new planner plans
