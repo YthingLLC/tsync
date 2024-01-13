@@ -654,7 +654,7 @@ public static class TrelloHelper
 
    async public static Task LoadFileMetaFromFile(String filename, Boolean relativeFilename = true)
    {
-       await DeserializeFromFile<Dictionary<String, FileMeta>?>(filename, relativeFilename);
+       _fileMeta = await DeserializeFromFile<Dictionary<String, FileMeta>?>(filename, relativeFilename);
    }
 
    static Boolean CheckFileHash(String fileId, Dictionary<String, FileMeta>? fileMetas)
