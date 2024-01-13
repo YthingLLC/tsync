@@ -44,6 +44,8 @@ public static class TrelloHelper
    private static String NowFile => $"{DateTime.UtcNow:yyyyMMdd.HHmmss.fff}";
 
    private static Dictionary<String, FileMeta>? _fileMeta;
+
+   public static Dictionary<String, FileMeta>? FileMeta => _fileMeta;
    public static Boolean FileMetasLoaded => _fileMeta is not null;
 
    public static void SetCredentials(String? apiKey, String? userToken)
