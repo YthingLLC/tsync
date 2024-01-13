@@ -1,6 +1,5 @@
 using System.Net.Http.Headers;
 using System.Text.Json;
-using Azure;
 using ComposableAsync;
 using Microsoft.Kiota.Abstractions.Extensions;
 using RateLimiter;
@@ -82,7 +81,7 @@ public static class TrelloHelper
         }
         catch (Exception e)
         {
-            Console.WriteLine($"Unable to open {filename} for writing, check to ensure that this is writable");
+            Console.WriteLine($"Unable to open {filename} for writing, check to ensure that this is writable. Actual Exception: {e.Message}");
             return null;
         }
  
@@ -132,6 +131,11 @@ public static class TrelloHelper
     async static Task WriteToFile(String filename, Stream contents)
     {
         var fs = GetFileStreamForCreateFile(filename);
+        if (fs is null)
+        {
+            Console.WriteLine($"Error opening filestream. Can not write to file {filename}");
+            return;
+        }
         await contents.CopyToAsync(fs);
         fs.Close();
     }
@@ -178,7 +182,7 @@ public static class TrelloHelper
             var resp = await DownloadAttachment(f.Value);
             if (resp.Complete)
             {
-                await UpdateFileStatus(f.Key, true);
+                UpdateFileStatus(f.Key, true);
             }
         }
     }
@@ -209,7 +213,7 @@ public static class TrelloHelper
 
    private static String Serialize<T>(T obj)
    {
-       return JsonSerializer.Serialize<T>(obj, JsonDefaultOpts);
+       return JsonSerializer.Serialize(obj, JsonDefaultOpts);
    }
    
    private static T? Deserialize<T>(String json)
@@ -259,6 +263,7 @@ public static class TrelloHelper
        //                                     this may be null if deserialization quietly fails
        //                  which sets this == 1, because reasons I guess?
        // and makes this not null, just for fun debugging times
+       // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
        if (orgs is null || orgs.Count == 0 || orgs[0].Id is null)
        {
            Console.WriteLine("Error: Unable to retrieve orgs from Trello");
@@ -353,6 +358,12 @@ public static class TrelloHelper
 
        var respCards = Deserialize<List<TCard>>(resp);
 
+       if (respCards is null)
+       {
+           Console.WriteLine($"Error: Unable to deserialize cards for {boardId}");
+           return null;
+       }
+
        var ret = new List<TCard>();
 
        var commentTasks = new List<Task<TCard>>();
@@ -419,9 +430,14 @@ public static class TrelloHelper
                if (!cardDict.TryGetValue(c.IdList, out list))
                {
                    cardDict.Add(c.IdList, new List<TCard>());
+                   //This may look redundant, but this is updating the reference list is pointing to
+                   //I want a reference to cardDict's version, as the out version is apparently immutable
+                   //but doesn't tell you until runtime!
                    list = cardDict[c.IdList];
                }
 
+               //Yes, ReSharper, this can be null. Do you not see the ? on list above?
+               // ReSharper disable once ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
                if (list is null)
                {
                    Console.WriteLine($"Error: Unable to retrieve list {c.IdList} to store card! Internal Application Error!");
@@ -548,7 +564,7 @@ public static class TrelloHelper
        
    }
 
-   async public static Task RenderFileMeta(List<TBoard> boards)
+   public static void RenderFileMeta(List<TBoard> boards)
    {
        var ret = new Dictionary<String, FileMeta>();
        foreach (var b in boards)
@@ -569,7 +585,7 @@ public static class TrelloHelper
        _fileMeta = ret;
    }
 
-   async static Task UpdateFileStatus(String fileId, Boolean complete, String? hash = null)
+   static void UpdateFileStatus(String fileId, Boolean complete, String? hash = null)
    {
        if (_fileMeta is null)
        {
@@ -605,7 +621,7 @@ public static class TrelloHelper
        }
        catch (Exception e)
        {
-           Console.WriteLine($"Unable to create directory, ensure that this location is writable: {path}");
+           Console.WriteLine($"Unable to create directory, ensure that this location is writable: {path}. Exception: {e.Message}");
            return false;
        }
    }
@@ -676,7 +692,10 @@ public static class TrelloHelper
            return;
        }
 
+       //TODO: Remove this when adding in file hashing check
+       #pragma warning disable CS0219 // Variable is assigned but its value is never used
        Int64 attachmentCount = 0, completedCount = 0, verifiedHashes = 0, bytesRemaing = 0;
+       #pragma warning restore CS0219 // Variable is assigned but its value is never used
        
        foreach (var f in _fileMeta)
        {

@@ -2,16 +2,16 @@
 
 Console.WriteLine("tsync - trello to ms planner sync tool\n");
 
-var settings = Settings.LoadSettings();
+var _settings = Settings.LoadSettings();
 
-List<TBoard>? boards = null;
+List<TBoard>? _boards = null;
 
 //Initialize TrelloHelper
-TrelloHelper.SetDownloadPath(settings.DownloadPath);
-TrelloHelper.SetCredentials(settings.TrelloApiKey, settings.TrelloUserToken);
+TrelloHelper.SetDownloadPath(_settings.DownloadPath);
+TrelloHelper.SetCredentials(_settings.TrelloApiKey, _settings.TrelloUserToken);
 
 // Initialize Graph
-InitializeGraph(settings);
+InitializeGraph(_settings);
 
 // Greet the user by name
 await GreetUserAsync();
@@ -25,7 +25,7 @@ while (choice != 0)
     Console.WriteLine("0. Exit");
     
     Console.WriteLine("---Trello Options---");
-    if (boards is not null)
+    if (_boards is not null)
     {
         Console.WriteLine("+++Trello Boards Loaded+++");
     }
@@ -52,7 +52,7 @@ while (choice != 0)
     {
         choice = int.Parse(Console.ReadLine() ?? string.Empty);
     }
-    catch (System.FormatException)
+    catch (FormatException)
     {
         // Set to invalid value
         choice = -1;
@@ -66,13 +66,13 @@ while (choice != 0)
             break;
         
         case 1:
-            boards = await DownloadTrelloBoards();
+            _boards = await DownloadTrelloBoards();
             break;
         case 2:
             await LoadDownloadedTrelloData();
             break;
         case 3:
-            TrelloHelper.PrintBoardStatistics(boards);
+            TrelloHelper.PrintBoardStatistics(_boards);
             break;
         case 4:
             await RenderAndSaveFileMetas();
@@ -212,7 +212,7 @@ async Task SendMailAsync()
 async Task LoadDownloadedTrelloData()
 {
     Console.WriteLine("Enter filename, or press enter to load `data-export-latest.json`");
-    Console.WriteLine($"File must be in {settings.DownloadPath} directory!");
+    Console.WriteLine($"File must be in {_settings.DownloadPath} directory!");
 
     String? filename = Console.ReadLine();
 
@@ -221,13 +221,13 @@ async Task LoadDownloadedTrelloData()
         filename = "data-export-latest.json";
     }
 
-    boards = await TrelloHelper.LoadBoardsFromFile(filename);
+    _boards = await TrelloHelper.LoadBoardsFromFile(filename);
 
-    if (boards is not null)
+    if (_boards is not null)
     {
         Console.WriteLine("Boards Loaded Successfully");
         Console.WriteLine();
-        TrelloHelper.PrintBoardStatistics(boards);
+        TrelloHelper.PrintBoardStatistics(_boards);
     }
     
 }
@@ -235,7 +235,7 @@ async Task LoadDownloadedTrelloData()
 async Task LoadLatestFileMeta()
 {
     Console.WriteLine("Enter filename, or press enter to load `filemeta/file-metadata-latest.json");
-    Console.WriteLine($"File must be in {settings.DownloadPath} directory!");
+    Console.WriteLine($"File must be in {_settings.DownloadPath} directory!");
 
     String? filename = Console.ReadLine();
 
@@ -255,12 +255,12 @@ async Task LoadLatestFileMeta()
 
 async Task RenderAndSaveFileMetas()
 {
-    if (boards is null)
+    if (_boards is null)
     {
         Console.WriteLine("Boards not yet loaded, download or restore previously downloaded");
         return;
     }
-    await TrelloHelper.RenderFileMeta(boards);
+    TrelloHelper.RenderFileMeta(_boards);
     
     await TrelloHelper.SaveFileMeta();
     
@@ -270,10 +270,14 @@ async Task RenderAndSaveFileMetas()
 async Task<List<TBoard>> DownloadTrelloBoards()
 {
     var orgs = await TrelloHelper.GetAllOrgs();
+    //yeah, yeah, I know. Whatever. I don't care. If this fails, oh well. Just try it again.
+    //It's not important at this stage.
+    #pragma warning disable CS8604 // Possible null reference argument.
     var boards = await TrelloHelper.GetAllOrgBoards(orgs);
     boards = await TrelloHelper.GetCardsForBoardList(boards);
-
-    await TrelloHelper.RenderFileMeta(boards);
+    #pragma warning restore CS8604 // Possible null reference argument.
+    
+    TrelloHelper.RenderFileMeta(boards);
 
     await TrelloHelper.SaveFileMeta();
     
