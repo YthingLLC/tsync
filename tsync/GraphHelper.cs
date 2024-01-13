@@ -14,6 +14,25 @@ class GraphHelper
     // Client configured with user authentication
     private static GraphServiceClient? _userClient;
 
+    private static List<GroupPlan> _groupPlans = new();
+    
+    public static List<GroupPlan> Plans => _groupPlans;
+    
+    public static Boolean PlansLoaded = _groupPlans.Count > 0;
+
+    public struct GroupPlan(String GroupId, String GroupName, String PlanId, String PlanName)
+    {
+        public String groupId { get; init; } = GroupId;
+        public String groupName { get; init; } = GroupName;
+        public String planId { get; init; } = PlanId;
+        public String planName { get; init; } = PlanName;
+
+        public override string ToString()
+        {
+            return $"Group: {groupId} - Plan: {planId} = {groupName} : {planName}";
+        }
+    }
+
     public static void InitializeGraphForUserAuth(Settings settings,
         Func<DeviceCodeInfo, CancellationToken, Task> deviceCodePrompt)
     {
@@ -337,7 +356,7 @@ class GraphHelper
     //it can be done with the beta API, but I don't want to use that for this (beta API is subj to change)
     //I'd rather the "plans" be created by the user in the web UI
     //and then selected through tsync
-    public async static Task MakeGraphCallAsync()
+    public async static Task GetAllGraphPlans()
     {
         if (_userClient is null)
         {
@@ -345,18 +364,38 @@ class GraphHelper
             return;
         }
 
-        var plans = await GetAllPlans();
+        //zero out existing list, new download has been requested
+        _groupPlans = new();
+
+        var groupPlans = await GetAllPlans();
 
         var users = await GetAllUsers();
-
-
-        if (plans is null || users is null)
+        
+        
+        
+        if (groupPlans is null || users is null)
         {
             Console.WriteLine("Missing required information from Graph API");
             return;
         }
         
-        var planBuckets = new Dictionary<String, List<PlanBucket>>();
+        //maybe in the future I'll care about this, but not right now
+        //right now I just need to get Trello -> Planner working
+        //TODO: Maybe determine if I can build this to be a 2 way sync
+        //var planBuckets = new Dictionary<String, List<PlanBucket>>();
+
+        foreach (var gp in groupPlans)
+        {
+            //Console.WriteLine($"{gp.groupId} - {gp.groupName}");
+
+            foreach (var p in gp.plans)
+            {
+                //Console.WriteLine($"----{p.Id} - {p.Title}");
+                _groupPlans.Add(new GroupPlan(gp.groupId, gp.groupName, p.Id ?? string.Empty, p.Title ?? String.Empty));
+            }
+        }
+
+        PrintPlans();
 
         //TODO: Create buckets = lists (trello)
         //TODO: Create tasks = cards (trello)
@@ -364,7 +403,16 @@ class GraphHelper
         //TODO: Create checklists = checklists
         //TODO: Check for any data that trello has that doesnt fit very well into Planner (hopefully none)
         //TODO: Print logs for entire process, and pause on errors
-        
-        
+
+
     }
+
+    public static void PrintPlans()
+    {
+        foreach (var p in _groupPlans)
+        {
+            Console.WriteLine(p.ToString());
+        }
+    } 
+    
 }
