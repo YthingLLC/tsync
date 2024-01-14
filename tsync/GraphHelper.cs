@@ -20,12 +20,16 @@ class GraphHelper
     
     public static Boolean PlansLoaded = _groupPlans.Count > 0;
 
-    public struct GroupPlan(String GroupId, String GroupName, String PlanId, String PlanName)
+    public struct GroupPlan(String GroupId, String GroupName, String PlanId, String PlanName, String DriveId, String DriveName)
     {
         public String groupId { get; init; } = GroupId;
         public String groupName { get; init; } = GroupName;
         public String planId { get; init; } = PlanId;
         public String planName { get; init; } = PlanName;
+
+        public String driveId { get; init; } = DriveId;
+
+        public String driveName { get; init; } = DriveName;
 
         public override string ToString()
         {
@@ -390,10 +394,27 @@ class GraphHelper
 
             foreach (var p in gp.plans)
             {
+                Console.Write(".");
                 //Console.WriteLine($"----{p.Id} - {p.Title}");
-                _groupPlans.Add(new GroupPlan(gp.groupId, gp.groupName, p.Id ?? string.Empty, p.Title ?? String.Empty));
+                
+                var drives = await _userClient.Groups[gp.groupId].Drives.GetAsync();
+                if (drives?.Value?[0].Id is null)
+                {
+                    Console.WriteLine($"Error: Group {gp.groupId} - {gp.groupName} has no drives! Please ensure that the Documents library exists for this group.");
+                    continue;
+                }
+
+                if (p.Id is null || p.Title is null)
+                {
+                    Console.WriteLine("Error: Group plan ID or name is null. Please fix.");
+                    continue;
+                }
+                //                                                                                             !this is not null, fake warning
+                _groupPlans.Add(new GroupPlan(gp.groupId, gp.groupName, p.Id, p.Title, drives.Value[0].Id!, drives.Value[0].Name!));
             }
         }
+
+        Console.WriteLine();
 
         PrintPlans();
 
@@ -423,32 +444,25 @@ class GraphHelper
             return;
         }
 
-        var sites = await _userClient.Sites.GetAsync();
-
-        if (sites?.Value is null)
+        if (_groupPlans.Count == 0)
         {
-            Console.WriteLine("Error: Unable to get drives from Graph, received a null response");
+            Console.WriteLine("Error: Need to load Group Plans!");
             return;
         }
+        
+    }
 
-        Console.WriteLine($"Total sites: {sites.Value.Count}");
-        
-        foreach (var s in sites.Value)
+    public static void PrintGroupDrives()
+    {
+        if (_groupPlans.Count < 1)
         {
-            Console.WriteLine($"{s.Id} - {s.Name}");
-            if (s.Drives is null)
-            {
-                Console.WriteLine("Site contains no drives");
-                continue;
-            }
-            
-            foreach (var d in s.Drives)
-            {
-                Console.WriteLine($"----{d.Id} - {d.Name}");
-            }
-            
+            Console.WriteLine("Error: Group Plans not loaded!");
+            return;
         }
-        
-        
+        foreach (var p in _groupPlans)
+        {
+            Console.WriteLine(p.ToString());
+            Console.WriteLine($"----{p.driveId} - {p.driveName}");
+        }
     }
 }
