@@ -1,10 +1,13 @@
-﻿using Microsoft.Graph.Print.Shares.Item.Jobs.Item.Start;
+﻿using System.Text.Json;
+using Microsoft.Graph.Print.Shares.Item.Jobs.Item.Start;
 using tsync;
 
 internal static class Tsync
 {
     private static readonly Settings _settings = Settings.LoadSettings();
     private static List<TBoard>? _boards;
+
+    private static List<FileMeta> _uploadedMetas = new();
     
     struct BoardMap (String trelloBoard, String graphGroup, String graphPlan)
     {
@@ -62,6 +65,10 @@ internal static class Tsync
             Console.WriteLine("22. Upload Attachments to Plan Groups");
             Console.WriteLine("23. Show Plan Drives");
             Console.WriteLine("24. Sync Boards to Plans");
+            Console.WriteLine("25. Show Detailed Upload Data");
+            Console.WriteLine("26. Reset Upload State");
+            Console.WriteLine("27. Save Upload State to File");
+            Console.WriteLine("28. Load Upload State from File");
 
             Console.WriteLine("---Graph Debug Opts---");
             Console.WriteLine("101. Display access token");
@@ -121,16 +128,24 @@ internal static class Tsync
                     PrintBoardMaps();
                     break;
                 case 22:
-                    var ms = new MemoryStream();
-                    var sw = new StreamWriter(ms);
-                    sw.WriteLine($"This is a test from tsync! {Guid.NewGuid()}");
-                    sw.Flush();
-                    await GraphHelper.UploadFileToPlanGroup("Ue3T8itnBkKxYbXsB06_pmUAARCV", "test-upload.txt", ms);
+                    await UploadTrelloFilesToGraph(); 
                     break;
                 case 23:
                     GraphHelper.PrintGroupDrives();
                     break;
                 case 24:
+                    break;
+                case 25:
+                    PrintUploadedMetas();
+                    break;
+                case 26:
+                    _uploadedMetas = new();
+                    break;
+                case 27:
+                    await SaveGraphUploadState();
+                    break;
+                case 28:
+                    await LoadGraphUploadState();
                     break;
 
                 case 101:
@@ -396,5 +411,116 @@ internal static class Tsync
         {
             Console.WriteLine(bm.ToString());
         }
+    }
+
+    static String GetPlanForBoard(String boardId)
+    {
+        var planMap = from board in _boardMaps
+            where board.TrelloBoardID.Equals(boardId, StringComparison.InvariantCulture)
+            select board;
+
+        var plan = planMap.FirstOrDefault();
+
+        return plan.GraphPlanID;
+    }
+
+    static void PrintUploadedMetas()
+    {
+        if (_uploadedMetas.Count < 1)
+        {
+            Console.WriteLine("No files uploaded to Graph!");
+            return;
+        }
+
+        foreach (var m in _uploadedMetas)
+        {
+            Console.WriteLine("Guid:AttachmentId/AttachmentFileName (complete):(isUpload) == GraphUrl");
+            Console.WriteLine("If file is not upload, complete will be false, and no GraphUrl will be provided.");
+            Console.WriteLine($"{m.FileID}:{m.AttachmentData.Id}/{m.AttachmentData.FileName} ({m.Complete}):({m.AttachmentData.IsUpload}) == {m.GraphUrl}");
+        }
+    }
+    
+    async static Task UploadTrelloFilesToGraph()
+    {
+        if (_boardMaps.Count < 1)
+        {
+            Console.WriteLine("No board maps defined");
+            return;
+        }
+
+        if (TrelloHelper.FileMeta is null)
+        {
+            Console.WriteLine("File meta not loaded");
+            return;
+        }
+        if (_uploadedMetas.Count > 0)
+        {
+            Console.WriteLine($"Files already uploaded this session.");
+            return;
+        }
+        foreach (var fm in TrelloHelper.FileMeta)
+        {
+            
+
+            if (fm.Value.AttachmentData.Bytes is null || fm.Value.AttachmentData.Bytes < 1)
+            {
+                Console.WriteLine($"{fm.Value.AttachmentData.Id} - Empty attachment, skipping upload.");
+                lock (_uploadedMetas)
+                {
+                    _uploadedMetas.Add(fm.Value);
+                }
+                continue;
+            }
+            
+            var fs = TrelloHelper.OpenAttachmentAsStream(fm.Value);
+            if (fs is null)
+            {
+                Console.WriteLine($"Unable to upload {fm.Key} - {fm.Value.FileID} - {fm.Value.AttachmentData.FileName}");
+                continue;
+            }
+
+            var webUrl = await GraphHelper.UploadFileToPlanGroup(GetPlanForBoard(fm.Value.OriginBoard), fm.Value.AttachmentData.FileName, fs);
+
+            var fm_new = fm.Value;
+            fm_new.GraphUrl = webUrl;
+            
+            lock (_uploadedMetas)
+            {
+                _uploadedMetas.Add(fm_new);
+            }
+
+        }
+        
+    }
+
+    async static Task SaveGraphUploadState()
+    {
+        if (_uploadedMetas.Count < 1)
+        {
+            Console.WriteLine("No upload metas to save.");
+            return;
+        }
+        var serial = JsonSerializer.Serialize(_uploadedMetas);
+
+        await TrelloHelper.WriteToFileAsync("graph-upload-state-latest.json", serial);
+
+        Console.WriteLine("State saved to File!");
+
+    }
+
+    async static Task LoadGraphUploadState()
+    {
+        var deserial = await TrelloHelper.LoadFileMetasFromFile("graph-upload-state-latest.json");
+
+        if (deserial is not null)
+        {
+            _uploadedMetas = deserial;
+            Console.WriteLine("State Loaded from File!");
+        }
+        else
+        {
+            Console.WriteLine("Error loading latest state from disk, ensure graph-upload-state-latest.json exists!");
+        }
+        
     }
 }

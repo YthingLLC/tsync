@@ -67,6 +67,26 @@ public static class TrelloHelper
        }
        return $"{DownloadPath}/{filename}";
    }
+
+   static FileStream? GetFileStreamForOpenFile(String filename, Boolean relativeFilename = true)
+   {
+       if (relativeFilename)
+       {
+           filename = GetDownloadFilePath(filename);
+       }
+
+       try
+       {
+           var fs = new FileStream(filename, FileMode.Open);
+           return fs;
+       }
+       catch (Exception e)
+       {
+           Console.WriteLine($"Unable to open file: {e.Message}");
+           return null;
+       }
+   }
+   
    //returns the path to where the file was saved on disk
    //file name on disk will not match the filename that was set by trello, it will be a new Guid
     static FileStream? GetFileStreamForCreateFile(String filename, Boolean relativeFilename = true)
@@ -129,6 +149,11 @@ public static class TrelloHelper
         await sw.FlushAsync();
         sw.Close();
     }
+
+    async static public Task WriteToFileAsync(String filename, String contents)
+    {
+        await WriteToFile(filename, contents);
+    }
  
     async static Task WriteToFile(String filename, Stream contents)
     {
@@ -144,12 +169,12 @@ public static class TrelloHelper
     
     async private static Task<FileMeta> DownloadAttachment(FileMeta attachment)
     {
-       await TrelloApiLimiter;
-
        if (!attachment.AttachmentData.IsUpload || attachment.Complete)
        {
            return attachment;
        }
+       
+       await TrelloApiLimiter;
        
        HttpRequestMessage request = new HttpRequestMessage(HttpMethod.Get, new Uri($"{attachment.AttachmentData.Url}"));
        request.Headers.Add("Authorization", $"OAuth oauth_consumer_key=\"{TrelloApiKey}\", oauth_token=\"{TrelloUserToken}\"");
@@ -169,6 +194,11 @@ public static class TrelloHelper
        attachment.Complete = true;
 
        return attachment;
+    }
+
+    public static FileStream? OpenAttachmentAsStream(FileMeta attachment)
+    {
+        return GetFileStreamForOpenFile($"{attachment.FileID}.file");
     }
 
     async public static Task DownloadAttachments()
@@ -245,6 +275,11 @@ public static class TrelloHelper
            Console.WriteLine($"Unable to load file: {e.Message}");
            return default;
        }
+   }
+
+   async static public Task<List<FileMeta>?> LoadFileMetasFromFile(String filename, Boolean relativeFilename = true)
+   {
+       return await DeserializeFromFile<List<FileMeta>?>(filename, relativeFilename);
    }
 
    async public static Task<List<TOrg>?> GetAllOrgs()
@@ -577,7 +612,7 @@ public static class TrelloHelper
                {
                    foreach (var a in c.Attachments)
                    {
-                       var meta = new FileMeta(a);
+                       var meta = new FileMeta(a, b.Id);
                        ret.Add(a.Id, meta);
                    }
                }
