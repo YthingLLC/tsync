@@ -1,0 +1,14 @@
+PUT https://graph.microsoft.com/v1.0/groups/e4a29d46-70c1-48c5-a4d3-557aac9a7088/drive/root:/tsync/test.data.txt:/content
+                                            Group ID                                       : Path               :/content always
+Body:
+
+Content-Type: text/plain
+Content-Type: application/octet-stream - also works, Microsoft's servers figure it out
+
+The contents of the file goes here.
+
+
+Returns a driveitem that contains a weburl to the item that can be attached to FileMeta
+
+
+Can also update contents of files, not just create new files.
