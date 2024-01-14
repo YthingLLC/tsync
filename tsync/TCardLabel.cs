@@ -2,11 +2,11 @@ namespace tsync;
 
 public struct TCardLabel
 {
-    public String Id { get; init; }
-    public String Name { get; init; }
-    public String Color { get; init; }
+    public string Id { get; init; }
+    public string Name { get; init; }
+    public string Color { get; init; }
 
-    public TCardLabel(String id, String name, String color)
+    public TCardLabel(string id, string name, string color)
     {
         Id = id;
         Name = name;

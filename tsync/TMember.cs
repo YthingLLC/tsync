@@ -2,14 +2,14 @@ namespace tsync;
 
 public struct TMember
 {
-   public String Id { get; set; } 
-   public String FullName { get; set; }
-   public String UserName { get; set; }
+    public string Id { get; set; }
+    public string FullName { get; set; }
+    public string UserName { get; set; }
 
-   public TMember(String id, String fullName, String userName)
-   {
-      Id = id;
-      FullName = fullName;
-      UserName = userName;
-   }
+    public TMember(string id, string fullName, string userName)
+    {
+        Id = id;
+        FullName = fullName;
+        UserName = userName;
+    }
 }

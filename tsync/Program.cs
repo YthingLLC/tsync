@@ -1,5 +1,4 @@
 ﻿using System.Text.Json;
-using Microsoft.Graph.Print.Shares.Item.Jobs.Item.Start;
 using tsync;
 
 internal static class Tsync
@@ -8,21 +7,10 @@ internal static class Tsync
     private static List<TBoard>? _boards;
 
     private static List<FileMeta> _uploadedMetas = new();
-    
-    struct BoardMap (String trelloBoard, String graphGroup, String graphPlan)
-    {
-        public String TrelloBoardID = trelloBoard;
-        public String GraphGroupID = graphGroup;
-        public String GraphPlanID = graphPlan;
 
-        public override string ToString()
-        {
-            return $"Trello Board: {TrelloBoardID} = MS Plan Group: {GraphGroupID}, Plan: {GraphPlanID}";
-        }
-    }
+    private static List<BoardMap> _boardMaps = new();
 
-    static List<BoardMap> _boardMaps = new();
-    async static Task Main()
+    private static async Task Main()
     {
         Console.WriteLine("tsync - trello to ms planner sync tool\n");
         //Initialize TrelloHelper
@@ -128,7 +116,7 @@ internal static class Tsync
                     PrintBoardMaps();
                     break;
                 case 22:
-                    await UploadTrelloFilesToGraph(); 
+                    await UploadTrelloFilesToGraph();
                     break;
                 case 23:
                     GraphHelper.PrintGroupDrives();
@@ -139,7 +127,7 @@ internal static class Tsync
                     PrintUploadedMetas();
                     break;
                 case 26:
-                    _uploadedMetas = new();
+                    _uploadedMetas = new List<FileMeta>();
                     break;
                 case 27:
                     await SaveGraphUploadState();
@@ -168,7 +156,7 @@ internal static class Tsync
         }
     }
 
-    static void InitializeGraph(Settings settings)
+    private static void InitializeGraph(Settings settings)
     {
         GraphHelper.InitializeGraphForUserAuth(settings,
             (info, cancel) =>
@@ -178,7 +166,7 @@ internal static class Tsync
             });
     }
 
-    static async Task GreetUserAsync()
+    private static async Task GreetUserAsync()
     {
         try
         {
@@ -192,7 +180,7 @@ internal static class Tsync
         }
     }
 
-    static async Task DisplayAccessTokenAsync()
+    private static async Task DisplayAccessTokenAsync()
     {
         try
         {
@@ -205,7 +193,7 @@ internal static class Tsync
         }
     }
 
-    static async Task ListInboxAsync()
+    private static async Task ListInboxAsync()
     {
         try
         {
@@ -240,7 +228,7 @@ internal static class Tsync
         }
     }
 
-    static async Task SendMailAsync()
+    private static async Task SendMailAsync()
     {
         try
         {
@@ -267,7 +255,7 @@ internal static class Tsync
         }
     }
 
-    static async Task LoadDownloadedTrelloData()
+    private static async Task LoadDownloadedTrelloData()
     {
         Console.WriteLine("Enter filename, or press enter to load `data-export-latest.json`");
         Console.WriteLine($"File must be in {_settings.DownloadPath} directory!");
@@ -287,7 +275,7 @@ internal static class Tsync
         }
     }
 
-    static async Task LoadLatestFileMeta()
+    private static async Task LoadLatestFileMeta()
     {
         Console.WriteLine("Enter filename, or press enter to load `filemeta/file-metadata-latest.json");
         Console.WriteLine($"File must be in {_settings.DownloadPath} directory!");
@@ -306,7 +294,7 @@ internal static class Tsync
         }
     }
 
-    static async Task RenderAndSaveFileMetas()
+    private static async Task RenderAndSaveFileMetas()
     {
         if (_boards is null)
         {
@@ -321,15 +309,15 @@ internal static class Tsync
         Console.WriteLine("File metadata rendered and saved");
     }
 
-    static async Task<List<TBoard>> DownloadTrelloBoards()
+    private static async Task<List<TBoard>> DownloadTrelloBoards()
     {
         var orgs = await TrelloHelper.GetAllOrgs();
         //yeah, yeah, I know. Whatever. I don't care. If this fails, oh well. Just try it again.
         //It's not important at this stage.
-        #pragma warning disable CS8604 // Possible null reference argument.
+#pragma warning disable CS8604 // Possible null reference argument.
         var boards = await TrelloHelper.GetAllOrgBoards(orgs);
         boards = await TrelloHelper.GetCardsForBoardList(boards);
-        #pragma warning restore CS8604 // Possible null reference argument.
+#pragma warning restore CS8604 // Possible null reference argument.
 
         TrelloHelper.RenderFileMeta(boards);
 
@@ -342,13 +330,13 @@ internal static class Tsync
         return boards;
     }
 
-    static async Task GetAllGraphPlans()
+    private static async Task GetAllGraphPlans()
     {
         await GraphHelper.GetAllGraphPlans();
     }
 
-    
-    static void MapBoardsToPlans()
+
+    private static void MapBoardsToPlans()
     {
         if (_boards is null || GraphHelper.Plans.Count == 0)
         {
@@ -357,14 +345,11 @@ internal static class Tsync
             return;
         }
 
-        _boardMaps = new();
+        _boardMaps = new List<BoardMap>();
 
         List<GraphHelper.GroupPlan> plannerPlans = new();
 
-        foreach (var p in GraphHelper.Plans)
-        {
-            plannerPlans.Add(p);
-        }
+        foreach (var p in GraphHelper.Plans) plannerPlans.Add(p);
 
         foreach (var b in _boards)
         {
@@ -372,15 +357,12 @@ internal static class Tsync
             Console.WriteLine($"Trello Board: {b.Id} - {b.Name}");
             Console.WriteLine("Select Planner Plan to Sync To:");
             Console.WriteLine("");
-            for (int i = 0; i < plannerPlans.Count; i++)
-            {
-                Console.WriteLine($"{i}. {plannerPlans[i].ToString()}");
-            }
+            for (var i = 0; i < plannerPlans.Count; i++) Console.WriteLine($"{i}. {plannerPlans[i].ToString()}");
 
             var input = Console.ReadLine();
-            Int32 result = -1;
-            
-            if (!Int32.TryParse(input, out result) || result < 0 || result > plannerPlans.Count)
+            var result = -1;
+
+            if (!int.TryParse(input, out result) || result < 0 || result > plannerPlans.Count)
             {
                 Console.WriteLine("Invalid input, please try again.");
                 //yes, I know, goto. Too bad. Makes more sense than putting the entire logic into another loop
@@ -389,31 +371,27 @@ internal static class Tsync
             }
 
             _boardMaps.Add(new BoardMap(b.Id, plannerPlans[result].groupId, plannerPlans[result].planId));
-            
+
             plannerPlans.RemoveAt(result);
         }
 
         Console.WriteLine("Success! All Trello Boards Mapped to MS Planner Plans!");
-        
+
         PrintBoardMaps();
-        
     }
 
-    static void PrintBoardMaps()
+    private static void PrintBoardMaps()
     {
         if (_boardMaps.Count < 1)
         {
             Console.WriteLine("No board maps defined.");
             return;
         }
-        
-        foreach (var bm in _boardMaps)
-        {
-            Console.WriteLine(bm.ToString());
-        }
+
+        foreach (var bm in _boardMaps) Console.WriteLine(bm.ToString());
     }
 
-    static String GetPlanForBoard(String boardId)
+    private static string GetPlanForBoard(string boardId)
     {
         var planMap = from board in _boardMaps
             where board.TrelloBoardID.Equals(boardId, StringComparison.InvariantCulture)
@@ -424,7 +402,7 @@ internal static class Tsync
         return plan.GraphPlanID;
     }
 
-    static void PrintUploadedMetas()
+    private static void PrintUploadedMetas()
     {
         if (_uploadedMetas.Count < 1)
         {
@@ -436,11 +414,12 @@ internal static class Tsync
         {
             Console.WriteLine("Guid:AttachmentId/AttachmentFileName (complete):(isUpload) == GraphUrl");
             Console.WriteLine("If file is not upload, complete will be false, and no GraphUrl will be provided.");
-            Console.WriteLine($"{m.FileID}:{m.AttachmentData.Id}/{m.AttachmentData.FileName} ({m.Complete}):({m.AttachmentData.IsUpload}) == {m.GraphUrl}");
+            Console.WriteLine(
+                $"{m.FileID}:{m.AttachmentData.Id}/{m.AttachmentData.FileName} ({m.Complete}):({m.AttachmentData.IsUpload}) == {m.GraphUrl}");
         }
     }
-    
-    async static Task UploadTrelloFilesToGraph()
+
+    private static async Task UploadTrelloFilesToGraph()
     {
         if (_boardMaps.Count < 1)
         {
@@ -453,15 +432,15 @@ internal static class Tsync
             Console.WriteLine("File meta not loaded");
             return;
         }
+
         if (_uploadedMetas.Count > 0)
         {
-            Console.WriteLine($"Files already uploaded this session.");
+            Console.WriteLine("Files already uploaded this session.");
             return;
         }
+
         foreach (var fm in TrelloHelper.FileMeta)
         {
-            
-
             if (fm.Value.AttachmentData.Bytes is null || fm.Value.AttachmentData.Bytes < 1)
             {
                 Console.WriteLine($"{fm.Value.AttachmentData.Id} - Empty attachment, skipping upload.");
@@ -469,46 +448,47 @@ internal static class Tsync
                 {
                     _uploadedMetas.Add(fm.Value);
                 }
+
                 continue;
             }
-            
+
             var fs = TrelloHelper.OpenAttachmentAsStream(fm.Value);
             if (fs is null)
             {
-                Console.WriteLine($"Unable to upload {fm.Key} - {fm.Value.FileID} - {fm.Value.AttachmentData.FileName}");
+                Console.WriteLine(
+                    $"Unable to upload {fm.Key} - {fm.Value.FileID} - {fm.Value.AttachmentData.FileName}");
                 continue;
             }
 
-            var webUrl = await GraphHelper.UploadFileToPlanGroup(GetPlanForBoard(fm.Value.OriginBoard), fm.Value.AttachmentData.FileName, fs);
+            var webUrl = await GraphHelper.UploadFileToPlanGroup(GetPlanForBoard(fm.Value.OriginBoard),
+                fm.Value.AttachmentData.FileName, fs);
 
             var fm_new = fm.Value;
             fm_new.GraphUrl = webUrl;
-            
+
             lock (_uploadedMetas)
             {
                 _uploadedMetas.Add(fm_new);
             }
-
         }
-        
     }
 
-    async static Task SaveGraphUploadState()
+    private static async Task SaveGraphUploadState()
     {
         if (_uploadedMetas.Count < 1)
         {
             Console.WriteLine("No upload metas to save.");
             return;
         }
+
         var serial = JsonSerializer.Serialize(_uploadedMetas);
 
         await TrelloHelper.WriteToFileAsync("graph-upload-state-latest.json", serial);
 
         Console.WriteLine("State saved to File!");
-
     }
 
-    async static Task LoadGraphUploadState()
+    private static async Task LoadGraphUploadState()
     {
         var deserial = await TrelloHelper.LoadFileMetasFromFile("graph-upload-state-latest.json");
 
@@ -521,6 +501,21 @@ internal static class Tsync
         {
             Console.WriteLine("Error loading latest state from disk, ensure graph-upload-state-latest.json exists!");
         }
-        
+    }
+
+    private static async Task SyncBoardsToPlans()
+    {
+    }
+
+    private struct BoardMap(string trelloBoard, string graphGroup, string graphPlan)
+    {
+        public readonly string TrelloBoardID = trelloBoard;
+        public readonly string GraphGroupID = graphGroup;
+        public readonly string GraphPlanID = graphPlan;
+
+        public override string ToString()
+        {
+            return $"Trello Board: {TrelloBoardID} = MS Plan Group: {GraphGroupID}, Plan: {GraphPlanID}";
+        }
     }
 }

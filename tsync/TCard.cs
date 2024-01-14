@@ -1,32 +1,32 @@
-
 namespace tsync;
 
 public struct TCard
 {
-    public Boolean Closed => IsArchived;
+    public bool Closed => IsArchived;
 
-    public Boolean IsArchived { get; init; }
-    
-    public String Id { get; init; }
-    
-    public String IdList { get; init; }
-    public String Name { get; init; }
-    public String Description { get; init; }
-    
+    public bool IsArchived { get; init; }
+
+    public string Id { get; init; }
+
+    public string IdList { get; init; }
+    public string Name { get; init; }
+    public string Description { get; init; }
+
     public DateTime? Start { get; init; }
-    
+
     public DateTime? Due { get; init; }
 
     public List<TCardLabel> Labels { get; init; }
-    
+
     public List<TAttachment> Attachments { get; init; }
-    
+
     public List<TComment> Comments { get; init; }
-    
+
     public List<TCheckList> CheckLists { get; init; }
 
 
-    public TCard(String id, String idList, String name, String description, Boolean isArchived, DateTime start, DateTime due,
+    public TCard(string id, string idList, string name, string description, bool isArchived, DateTime start,
+        DateTime due,
         List<TCardLabel> labels, List<TCheckList> checkLists, List<TAttachment> attachments)
     {
         Id = id;
@@ -56,5 +56,4 @@ public struct TCard
         CheckLists = card.CheckLists;
         Comments = comments;
     }
-
 }

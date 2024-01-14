@@ -2,32 +2,33 @@ namespace tsync;
 
 public struct FileMeta
 {
-   public Guid FileID { get; init; } 
-   
-   public TAttachment AttachmentData { get; init; }
-   
-   public Boolean Complete { get; set; }
+    public Guid FileID { get; init; }
 
-   public String? GraphUrl { get; set; }
-   
-   public String? Hash;
-   
-   public String OriginBoard { get; init; }
+    public TAttachment AttachmentData { get; init; }
 
-   public FileMeta(TAttachment attachmentData, String originBoard)
-   {
-      FileID = Guid.NewGuid();
-      Complete = false;
-      AttachmentData = attachmentData;
-      OriginBoard = originBoard;
-   }
+    public bool Complete { get; set; }
 
-   public FileMeta(Guid fileId, TAttachment attachmentData, String originBoard, Boolean complete = false, String? hash = null)
-   {
-      FileID = fileId;
-      AttachmentData = attachmentData;
-      Complete = complete;
-      Hash = hash;
-      OriginBoard = originBoard;
-   }
+    public string? GraphUrl { get; set; }
+
+    public string? Hash;
+
+    public string OriginBoard { get; init; }
+
+    public FileMeta(TAttachment attachmentData, string originBoard)
+    {
+        FileID = Guid.NewGuid();
+        Complete = false;
+        AttachmentData = attachmentData;
+        OriginBoard = originBoard;
+    }
+
+    public FileMeta(Guid fileId, TAttachment attachmentData, string originBoard, bool complete = false,
+        string? hash = null)
+    {
+        FileID = fileId;
+        AttachmentData = attachmentData;
+        Complete = complete;
+        Hash = hash;
+        OriginBoard = originBoard;
+    }
 }

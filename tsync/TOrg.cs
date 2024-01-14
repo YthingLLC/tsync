@@ -2,13 +2,13 @@ namespace tsync;
 
 public struct TOrg
 {
-    public String Id { get; init; }
-    public String DisplayName { get; init; }
-    public List<String> IdBoards { get; init; }
-    public String DomainName { get; init; }
-    public Int32 MembersCount { get; init; }
+    public string Id { get; init; }
+    public string DisplayName { get; init; }
+    public List<string> IdBoards { get; init; }
+    public string DomainName { get; init; }
+    public int MembersCount { get; init; }
 
-    public TOrg(String id, String displayName, List<String> idBoards, String domainName, Int32 membersCount)
+    public TOrg(string id, string displayName, List<string> idBoards, string domainName, int membersCount)
     {
         Id = id;
         DisplayName = displayName;
@@ -16,5 +16,4 @@ public struct TOrg
         DomainName = domainName;
         MembersCount = membersCount;
     }
-    
 }
