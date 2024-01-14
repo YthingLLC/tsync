@@ -413,6 +413,42 @@ class GraphHelper
         {
             Console.WriteLine(p.ToString());
         }
-    } 
-    
+    }
+
+    public static async Task UploadFileToPlanGroup(String groupId, String fileName, Stream data)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Graph client is not initialized");
+            return;
+        }
+
+        var sites = await _userClient.Sites.GetAsync();
+
+        if (sites?.Value is null)
+        {
+            Console.WriteLine("Error: Unable to get drives from Graph, received a null response");
+            return;
+        }
+
+        Console.WriteLine($"Total sites: {sites.Value.Count}");
+        
+        foreach (var s in sites.Value)
+        {
+            Console.WriteLine($"{s.Id} - {s.Name}");
+            if (s.Drives is null)
+            {
+                Console.WriteLine("Site contains no drives");
+                continue;
+            }
+            
+            foreach (var d in s.Drives)
+            {
+                Console.WriteLine($"----{d.Id} - {d.Name}");
+            }
+            
+        }
+        
+        
+    }
 }
