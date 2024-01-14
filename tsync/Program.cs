@@ -1,10 +1,24 @@
-﻿using tsync;
+﻿using Microsoft.Graph.Print.Shares.Item.Jobs.Item.Start;
+using tsync;
 
 internal static class Tsync
 {
     private static readonly Settings _settings = Settings.LoadSettings();
     private static List<TBoard>? _boards;
+    
+    struct BoardMap (String trelloBoard, String graphGroup, String graphPlan)
+    {
+        public String TrelloBoardID = trelloBoard;
+        public String GraphGroupID = graphGroup;
+        public String GraphPlanID = graphPlan;
 
+        public override string ToString()
+        {
+            return $"Trello Board: {TrelloBoardID} = MS Plan Group: {GraphGroupID}, Plan: {GraphPlanID}";
+        }
+    }
+
+    static List<BoardMap> _boardMaps = new();
     async static Task Main()
     {
         Console.WriteLine("tsync - trello to ms planner sync tool\n");
@@ -44,8 +58,10 @@ internal static class Tsync
 
             Console.WriteLine("---Migration Options---");
             Console.WriteLine("20. Map Trello Boards to Plans");
-            Console.WriteLine("21. Upload Attachments to Plan Groups");
-            Console.WriteLine("22. Sync Boards to Plans");
+            Console.WriteLine("21. Show Current Board Mapping");
+            Console.WriteLine("22. Upload Attachments to Plan Groups");
+            Console.WriteLine("23. Show Plan Drives");
+            Console.WriteLine("24. Sync Boards to Plans");
 
             Console.WriteLine("---Graph Debug Opts---");
             Console.WriteLine("101. Display access token");
@@ -99,10 +115,18 @@ internal static class Tsync
                     break;
 
                 case 20:
+                    MapBoardsToPlans();
                     break;
                 case 21:
+                    PrintBoardMaps();
                     break;
                 case 22:
+                    await GraphHelper.UploadFileToPlanGroup("", "", new MemoryStream());
+                    break;
+                case 23:
+                    GraphHelper.PrintGroupDrives();
+                    break;
+                case 24:
                     break;
 
                 case 101:
@@ -304,12 +328,69 @@ internal static class Tsync
         await GraphHelper.GetAllGraphPlans();
     }
 
-    static async Task MapBoardsToPlans()
+    
+    static void MapBoardsToPlans()
     {
         if (_boards is null || GraphHelper.Plans.Count == 0)
         {
             Console.WriteLine("Error: Need to load both: Trello Boards and Graph Plans!");
             Console.WriteLine("Note: You need to also create the plans first, this tool does not create Planner Plans");
+            return;
+        }
+
+        _boardMaps = new();
+
+        List<GraphHelper.GroupPlan> plannerPlans = new();
+
+        foreach (var p in GraphHelper.Plans)
+        {
+            plannerPlans.Add(p);
+        }
+
+        foreach (var b in _boards)
+        {
+            Start:
+            Console.WriteLine($"Trello Board: {b.Id} - {b.Name}");
+            Console.WriteLine("Select Planner Plan to Sync To:");
+            Console.WriteLine("");
+            for (int i = 0; i < plannerPlans.Count; i++)
+            {
+                Console.WriteLine($"{i}. {plannerPlans[i].ToString()}");
+            }
+
+            var input = Console.ReadLine();
+            Int32 result = -1;
+            
+            if (!Int32.TryParse(input, out result) || result < 0 || result > plannerPlans.Count)
+            {
+                Console.WriteLine("Invalid input, please try again.");
+                //yes, I know, goto. Too bad. Makes more sense than putting the entire logic into another loop
+                //and it's only this one...
+                goto Start;
+            }
+
+            _boardMaps.Add(new BoardMap(b.Id, plannerPlans[result].groupId, plannerPlans[result].planId));
+            
+            plannerPlans.RemoveAt(result);
+        }
+
+        Console.WriteLine("Success! All Trello Boards Mapped to MS Planner Plans!");
+        
+        PrintBoardMaps();
+        
+    }
+
+    static void PrintBoardMaps()
+    {
+        if (_boardMaps.Count < 1)
+        {
+            Console.WriteLine("No board maps defined.");
+            return;
+        }
+        
+        foreach (var bm in _boardMaps)
+        {
+            Console.WriteLine(bm.ToString());
         }
     }
 }
