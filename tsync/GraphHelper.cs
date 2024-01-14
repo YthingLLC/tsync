@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Xml.Schema;
 using Azure.Core;
@@ -475,14 +476,17 @@ class GraphHelper
         {
             client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
 
-            using (var content = new MultipartFormDataContent())
+            //ensure we are rewound to the start of the stream
+            data.Position = 0;
+            using (var content = new StreamContent(data))
             {
                 //yes, I know this Guid does not match the one we created in the FileMeta, I also don't care. Should I reuse it?
                 //maybe? generating a new Guid isn't expensive though, and ensures no file name conflicts.
                 var uploadUrl =
-                            $"https://graph.microsoft.com/v1.0/groups/{gp.groupId}/drive/root:/tsync/{Guid.NewGuid().ToString()}/{fileName}:/content";    
-                content.Add(new StreamContent(data), "file", fileName);
+                            $"https://graph.microsoft.com/v1.0/groups/{gp.groupId}/drive/root:/tsync/{Guid.NewGuid().ToString()}/{fileName}:/content";
 
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
+                
                 var resp = await client.PutAsync(uploadUrl, content);
 
                 if (!resp.IsSuccessStatusCode)
