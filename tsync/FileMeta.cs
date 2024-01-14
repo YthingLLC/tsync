@@ -8,6 +8,8 @@ public struct FileMeta
    
    public Boolean Complete { get; set; }
 
+   public String? GraphUrl { get; set; }
+   
    public String? Hash;
 
    public FileMeta(TAttachment attachmentData)
