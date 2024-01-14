@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Xml.Schema;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Graph;
@@ -436,20 +438,72 @@ class GraphHelper
         }
     }
 
-    public static async Task UploadFileToPlanGroup(String groupId, String fileName, Stream data)
+    public static async Task<String?> UploadFileToPlanGroup(String planId, String fileName, Stream data)
     {
         if (_userClient is null)
         {
             Console.WriteLine("Graph client is not initialized");
-            return;
+            return null;
         }
 
         if (_groupPlans.Count == 0)
         {
             Console.WriteLine("Error: Need to load Group Plans!");
-            return;
+            return null;
+        }
+
+        var drive = from plan in _groupPlans
+            where plan.planId.Equals(planId, StringComparison.InvariantCulture)
+            select plan;
+
+        // ReSharper disable once PossibleMultipleEnumeration
+        if (!drive.Any())
+        {
+            Console.WriteLine("Error: Invalid planID");
+        }
+
+        //I don't care, this will almost always only have 1 result
+        //this looks nicer than any alternative I can think of
+        // ReSharper disable once PossibleMultipleEnumeration
+        var gp = drive.First();
+
+        //apparently the Graph SDK does not support uploading files... some web resources show that it does, but are all >2 years old
+        //so I am assuming that this is no longer the case, and I can't find any other code than just saying f*** it, do it live
+        var token = await GetUserTokenAsync();
+
+        using (var client = new HttpClient())
+        {
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+
+            using (var content = new MultipartFormDataContent())
+            {
+                //yes, I know this Guid does not match the one we created in the FileMeta, I also don't care. Should I reuse it?
+                //maybe? generating a new Guid isn't expensive though, and ensures no file name conflicts.
+                var uploadUrl =
+                            $"https://graph.microsoft.com/v1.0/groups/{gp.groupId}/drive/root:/tsync/{Guid.NewGuid().ToString()}/{fileName}:/content";    
+                content.Add(new StreamContent(data), "file", fileName);
+
+                var resp = await client.PutAsync(uploadUrl, content);
+
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Error: Can not upload file. The server said: {await resp.Content.ReadAsStringAsync()}");
+                }
+
+                using (JsonDocument json = JsonDocument.Parse(await resp.Content.ReadAsStringAsync()))
+                {
+                    if (json.RootElement.TryGetProperty("webUrl", out JsonElement webUrl))
+                    {
+                        var url = webUrl.GetString();
+                        Console.WriteLine($"File {fileName} uploaded. - {url}");
+                        return url;
+                    }
+                }
+            }
         }
         
+        Console.WriteLine($"Error: Failed to Upload file {fileName}. Unknown reason.");
+        return null;
     }
 
     public static void PrintGroupDrives()

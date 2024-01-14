@@ -121,7 +121,11 @@ internal static class Tsync
                     PrintBoardMaps();
                     break;
                 case 22:
-                    await GraphHelper.UploadFileToPlanGroup("", "", new MemoryStream());
+                    var ms = new MemoryStream();
+                    var sw = new StreamWriter(ms);
+                    sw.WriteLine($"This is a test from tsync! {Guid.NewGuid()}");
+                    sw.Flush();
+                    await GraphHelper.UploadFileToPlanGroup("Ue3T8itnBkKxYbXsB06_pmUAARCV", "test-upload.txt", ms);
                     break;
                 case 23:
                     GraphHelper.PrintGroupDrives();
