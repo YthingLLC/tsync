@@ -3,9 +3,12 @@ using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Graph;
+using Microsoft.Graph.Groups.Item.Threads.Item.Reply;
 using Microsoft.Graph.Me.SendMail;
 using Microsoft.Graph.Models;
 using tsync;
+using RateLimiter;
+using ComposableAsync;
 
 internal class GraphHelper
 {
@@ -18,10 +21,15 @@ internal class GraphHelper
     // Client configured with user authentication
     private static GraphServiceClient? _userClient;
 
-    public static bool PlansLoaded = Plans.Count > 0;
-
     public static List<GroupPlan> Plans { get; private set; } = new();
-
+    
+    public static bool PlansLoaded => Plans.Count > 0;
+    
+    //Pretty much only used with the task posting
+    //Microsoft's docs dont say that there is a limit, but observably, there is.
+    //Setting to the same as Trello
+    private static readonly TimeLimiter GraphApiLimiter =
+        TimeLimiter.GetFromMaxCountByInterval(9, TimeSpan.FromSeconds(1));
     public static void InitializeGraphForUserAuth(Settings settings,
         Func<DeviceCodeInfo, CancellationToken, Task> deviceCodePrompt)
     {
@@ -37,6 +45,7 @@ internal class GraphHelper
         _deviceCodeCredential = new DeviceCodeCredential(options);
 
         _userClient = new GraphServiceClient(_deviceCodeCredential, settings.GraphUserScopes);
+        
     }
 
     public static async Task<string> GetUserTokenAsync()
@@ -136,6 +145,7 @@ internal class GraphHelper
 
     private static async Task<List<GraphUser>?> GetAllUsers()
     {
+        await GraphApiLimiter;
         if (_userClient is null)
         {
             Console.WriteLine("Graph client has not been initialized for user auth");
@@ -173,6 +183,8 @@ internal class GraphHelper
             return null;
         }
 
+        await GraphApiLimiter;
+        
         var groups = await _userClient.Groups.GetAsync();
 
         if (groups?.Value is null)
@@ -188,6 +200,7 @@ internal class GraphHelper
             if (g.Id is null || g.DisplayName is null) continue;
             //put the tasks in the list, we are going to await them later
             //allows for multiple concurrent requests in flight
+            await GraphApiLimiter;
             grplans.Add(TaskKVP((g.Id, g.DisplayName), _userClient.Groups[g.Id].Planner.Plans.GetAsync()));
         }
 
@@ -241,6 +254,7 @@ internal class GraphHelper
             return null;
         }
 
+        await GraphApiLimiter;
         var buckets = await _userClient.Planner.Plans[planId].Buckets.GetAsync();
 
         if (buckets?.Value is null)
@@ -313,6 +327,7 @@ internal class GraphHelper
             Console.Write(".");
 
             //Console.WriteLine($"----{p.Id} - {p.Title}");
+            await GraphApiLimiter;
             var drives = await _userClient.Groups[gp.groupId].Drives.GetAsync();
             if (drives?.Value?[0].Id is null)
             {
@@ -377,6 +392,7 @@ internal class GraphHelper
 
         //apparently the Graph SDK does not support uploading files... some web resources show that it does, but are all >2 years old
         //so I am assuming that this is no longer the case, and I can't find any other code than just saying f*** it, do it live
+        await GraphApiLimiter;
         var token = await GetUserTokenAsync();
 
         using (var client = new HttpClient())
@@ -394,6 +410,7 @@ internal class GraphHelper
 
                 content.Headers.ContentType = new MediaTypeHeaderValue("application/octet-stream");
 
+                await GraphApiLimiter;
                 var resp = await client.PutAsync(uploadUrl, content);
 
                 if (!resp.IsSuccessStatusCode)
@@ -431,6 +448,197 @@ internal class GraphHelper
         }
     }
 
+    public static async Task<String?> CreatePlanBucket(String planId, String bucketName)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Graph client not initialized");
+            return null;
+        }
+        var body = new PlannerBucket
+        {
+            Name = bucketName,
+            PlanId = planId
+        };
+
+        await GraphApiLimiter;
+        var resp = await _userClient.Planner.Buckets.PostAsync(body);
+
+        if (resp is null)
+        {
+            Console.WriteLine($"Error creating {bucketName} for {planId}");
+            return null;
+        }
+
+        return resp.Id;
+        
+    }
+
+    public static async Task<(String?, String?)?> CreateTask(PlannerTask task)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Graph client not initialized!");
+            return null;
+        }
+
+        Int32 retryCount = 0;
+        Retry:
+        retryCount++;
+        PlannerTask? resp = null;
+        try
+        {
+            await GraphApiLimiter;
+            resp = await _userClient.Planner.Tasks.PostAsync(task);
+        }
+        catch (Microsoft.Graph.Models.ODataErrors.ODataError e)
+        {
+            Console.WriteLine($"OData Error: {e.Message}");
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine($"PostAsync Exception: {e.Message}");
+            if (retryCount < 10)
+            {
+                goto Retry;
+            }
+
+            Console.WriteLine("Too many retry failures!");
+        }
+        if (resp is null)
+        {
+            Console.WriteLine($"Error posting task: {task.Title}");
+            return null;
+        }
+
+        return (resp.Id, resp.ConversationThreadId);
+    }
+
+    public static async Task PostReplyToGroupThread(String groupId, String threadId, String reply)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Graph client not initialized!");
+            return;
+        }
+        var body = new ReplyPostRequestBody()
+        {
+            Post = new Post
+            {
+                Body = new ItemBody
+                {
+                    ContentType = BodyType.Text,
+                    Content = reply
+                }
+            }
+        };
+
+        await GraphApiLimiter;
+        await _userClient.Groups[groupId].Threads[threadId].Reply.PostAsync(body);
+    }
+
+    public static async Task<List<(String, String)>?> GetPlanTaskIds(String planId)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Error: Graph client is not initialized");
+            return null;
+        }
+
+        await GraphApiLimiter;
+        var resp = await _userClient.Planner.Plans[planId].Tasks.GetAsync();
+
+        if (resp?.Value is null)
+        {
+            Console.WriteLine($"Error: Plan {planId} could not be retrieved from Graph");
+            return null;
+        }
+
+        var ret = new List<(String, String)>();
+
+        foreach (var r in resp.Value)
+        {
+            if (r.Id is null)
+            {
+                continue;
+            }
+            var etag = r.AdditionalData["@odata.etag"] as String;
+            if (etag is null)
+            {
+                continue;
+            }
+            ret.Add((r.Id, etag));
+        }
+
+        return ret;
+    }
+
+    public static async Task DeleteTask(String taskId, String etag)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Error: Graph client is not initialized");
+            return;
+        }
+
+        await GraphApiLimiter;
+        await _userClient.Planner.Tasks[taskId].DeleteAsync((configuration) =>
+        {
+            configuration.Headers.Add("If-Match", etag);
+        });
+    }
+
+    public static async Task<List<(String, String)>?> GetBucketIds(String planId)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Error: Graph client is not initialized");
+            return null;
+        }
+
+        await GraphApiLimiter;
+        var resp = await _userClient.Planner.Plans[planId].Buckets.GetAsync();
+        
+        if (resp?.Value is null)
+        {
+            Console.WriteLine($"Error: Plan {planId} could not be retrieved from Graph");
+            return null;
+        }
+        
+        var ret = new List<(String, String)>();
+        
+        foreach (var r in resp.Value)
+        {
+            if (r.Id is null)
+            {
+                continue;
+            }
+            var etag = r.AdditionalData["@odata.etag"] as String;
+            if (etag is null)
+            {
+                continue;
+            }
+            ret.Add((r.Id, etag));
+        }
+        
+        return ret;
+    }
+
+    public static async Task DeleteBucket(String bucketId, String etag)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Error: Graph client is not initialized");
+            return;
+        }
+
+        await GraphApiLimiter;
+        await _userClient.Planner.Buckets[bucketId].DeleteAsync((configuration) =>
+        {
+            configuration.Headers.Add("If-Match", etag);
+        });
+    }
+    
     public struct GroupPlan(
         string GroupId,
         string GroupName,

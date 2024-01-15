@@ -30,6 +30,6 @@ public struct TComment
 
     public override string ToString()
     {
-        return $"[{Date.ToString("u")}] {MemberCreator.FullName} ({MemberCreator.UserName}): {Data.Text}";
+        return $"[tsync][{Date.ToString("u")}] {MemberCreator.FullName} ({MemberCreator.UserName}): {Data.Text}";
     }
 }
