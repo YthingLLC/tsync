@@ -74,8 +74,8 @@ internal static class Tsync
                 choice = -1;
             }
 
-            //try
-            //{
+            try
+            {
                 switch (choice)
                 {
                     case 0:
@@ -160,11 +160,11 @@ internal static class Tsync
                         Console.WriteLine("Invalid choice! Please try again.");
                         break;
                 }
-            //}
-            //catch (Exception e)
-            //{
-            //    Console.WriteLine($"Exception: {e.Message}");
-            //}
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine($"Exception: {e.Message}");
+            }
         }
     }
 

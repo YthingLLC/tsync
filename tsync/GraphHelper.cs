@@ -511,6 +511,10 @@ internal class GraphHelper
             return null;
         }
 
+        //graph sdk does not give me conversationthreadid, when calling via graph explorer it works though
+        //TODO: Consider converting this to manual calls instead of using SDK, like File uploads
+        var resp2= await _userClient.Planner.Tasks[resp.Id].GetAsync();
+        
         return (resp.Id, resp.ConversationThreadId);
     }
 
