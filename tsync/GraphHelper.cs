@@ -1,5 +1,7 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Graph;
@@ -474,7 +476,210 @@ internal class GraphHelper
         
     }
 
+    //Needed because creating a task in Graph does not create an associated conversation thread
+    //like it does in the planner web ui
+    //so... create the thread, with a small "tsync" message, and then attach that thread
+    //to newly created tasks!
+    private static async Task<String?> CreateConversationThread(String groupId, String taskTitle)
+    {
+        if (_userClient is null)
+        {
+            Console.WriteLine("Graph client is not initialized");
+            return null;
+        }
+
+        var title = taskTitle;
+
+        if (taskTitle.Length > 50)
+        {
+            title = title.Substring(0, 50);
+        }
+
+        var body = new ConversationThread
+        {
+            Topic = title,
+            Posts = new List<Post>
+            {
+                new Post
+                {
+                    Body = new ItemBody
+                    {
+                        ContentType = BodyType.Text,
+                        Content = $"[tsync] created at : {DateTimeOffset.Now}"
+                    }
+                }
+            }
+        };
+
+        await GraphApiLimiter;
+        var resp = await _userClient.Groups[groupId].Threads.PostAsync(body);
+
+        if (resp is not null)
+        {
+            return resp.Id;
+        }
+        
+        return null;
+    }
+
+    //Used for caching responses from GetGroupIdForPlan
+    //I could probably rework this a bit to not *need* make these calls again
+    //...but it is not likely to be many total calls in the grand scheme of things
+    //so too bad, this is easier. Also "hides" this impl detail from the caller
+    //even though my only caller (at the moment) knows what the groupIds are already
+    private static Dictionary<String, String> PlanGroups = new();
+    
+    private static async Task<String?> GetGroupIdForPlan(String planId)
+    {
+        //see? At least I use a cache, it's not that bad...
+        if (PlanGroups.ContainsKey(planId))
+        {
+            //return PlanGroups[planId];
+        }
+        if (_userClient is null)
+        {
+            Console.WriteLine("Graph client is not initialized");
+            return null;
+        }
+
+        await GraphApiLimiter;
+        var resp = await _userClient.Planner.Plans[planId].GetAsync();
+
+        if (resp is null || resp.Container is null || resp.Container.ContainerId is null)
+        {
+            Console.WriteLine($"Error: Could not determine Group for Plan {planId}");
+            return null;
+        }
+        
+        //...but the cache only works if you add to it
+        PlanGroups.Add(planId, resp.Container.ContainerId);
+        return resp.Container.ContainerId;
+
+    }
+    
+    //only here because it's easier to convert the PlannerTask to a TPlannerTask than to
+    //rewrite the logic that creates the PlannerTask in the first place...
     public static async Task<(String?, String?)?> CreateTask(PlannerTask task)
+    {
+        var tplanId = task.PlanId;
+        var tbucketId = task.BucketId; 
+        var ttitle = task.Title;
+
+        if (tplanId is null || tbucketId is null || ttitle is null)
+        {
+            Console.WriteLine("Error: PlanID, BucketID, and Title are required to create new tasks!");
+            return null;
+        }
+        
+        var groupId = await GetGroupIdForPlan(tplanId);
+
+        if (groupId is null)
+        {
+            Console.WriteLine($"Error: Could not create conversation thread for Task {ttitle}. (Is PlanID correct?)");
+            return null;
+        }
+
+        var convId = await CreateConversationThread(groupId, ttitle);
+
+        if (convId is null)
+        {
+            Console.WriteLine($"Error: Could not create conversation thread for Task {ttitle}. Check permissions to Group {groupId}");
+            return null;
+        }
+
+        if (task.Details is null)
+        {
+            return await CreateTask(new TPlannerTask
+            {
+                planId = tplanId,
+                bucketId = tbucketId,
+                title = ttitle,
+                conversationThreadId = convId
+            });
+        }
+
+        Dictionary<String, TPlannerTaskExternalReference>? refs = null;
+        Dictionary<String, TPlannerTaskCheckItem>? clists = null;
+
+        if (task.Details.Checklist is not null)
+        {
+            clists = new();
+            foreach (var citem in task.Details.Checklist.AdditionalData)
+            {
+                //...I hate that the official SDK doesn't really support this properly
+                //it's this weird boxed type... same for external references...
+                //also, first time I've ever seen this syntax. Rider suggested it, but I kind of like it
+                //reminds me of 'if let' in Rust
+                if (citem.Value is not PlannerChecklistItem val || val.Title is null)
+                {
+                    Console.WriteLine("Error: Title is required for checklist items!");
+                    continue;
+                }
+
+                var titem = new TPlannerTaskCheckItem
+                {
+                    isChecked = val.IsChecked ?? false,
+                    title = val.Title,
+                    lastModifiedDateTime = val.LastModifiedDateTime,
+                    orderHint = val.OrderHint
+                };
+                
+                clists.Add(citem.Key, titem);
+
+            }
+        }
+
+        if (task.Details.References is not null)
+        {
+            refs = new();
+
+            foreach (var ritem in task.Details.References.AdditionalData)
+            {
+                if (ritem.Value is not PlannerExternalReference val || val.Alias is null)
+                {
+                    Console.WriteLine("Error: Alias is required for external references!");
+                    continue;
+                }
+
+                var titem = new TPlannerTaskExternalReference
+                {
+                    alias = val.Alias,
+                    lastModifiedDateTime = val.LastModifiedDateTime
+                };
+
+                var refLink = ritem.Key;
+                if (refLink.StartsWith("@"))
+                {
+                    //official Graph SDK requires a silly @ at the front of this field
+                    //strip it off when creating the TPlannerTaskExternalReference
+                    refLink = refLink.Substring(1);
+                }
+                
+                refs.Add(refLink, titem);
+            }
+        }
+
+        var tdetails = new TPlannerTaskDetails
+        {
+            description = task.Details.Description,
+            references = refs,
+            checklist = clists
+        };
+
+        return await CreateTask(new TPlannerTask
+        {
+            planId = tplanId,
+            bucketId = tbucketId,
+            title = ttitle,
+            conversationThreadId = convId,
+            details = tdetails
+        });
+
+
+
+    }
+    
+    public static async Task<(String?, String?)?> CreateTask(TPlannerTask task)
     {
         if (_userClient is null)
         {
@@ -482,40 +687,20 @@ internal class GraphHelper
             return null;
         }
 
-        Int32 retryCount = 0;
-        Retry:
-        retryCount++;
-        PlannerTask? resp = null;
-        try
+        var opts = new JsonSerializerOptions
         {
-            await GraphApiLimiter;
-            resp = await _userClient.Planner.Tasks.PostAsync(task);
-        }
-        catch (Microsoft.Graph.Models.ODataErrors.ODataError e)
-        {
-            Console.WriteLine($"OData Error: {e.Message}");
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine($"PostAsync Exception: {e.Message}");
-            if (retryCount < 10)
-            {
-                goto Retry;
-            }
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            NumberHandling = JsonNumberHandling.AllowReadingFromString
+        };
 
-            Console.WriteLine("Too many retry failures!");
-        }
-        if (resp is null)
-        {
-            Console.WriteLine($"Error posting task: {task.Title}");
-            return null;
-        }
-
-        //graph sdk does not give me conversationthreadid, when calling via graph explorer it works though
-        //TODO: Consider converting this to manual calls instead of using SDK, like File uploads
-        var resp2= await _userClient.Planner.Tasks[resp.Id].GetAsync();
+        var serial = System.Text.Json.JsonSerializer.Serialize(task, opts);
         
-        return (resp.Id, resp.ConversationThreadId);
+        Console.WriteLine(serial);
+        
+        return null;
+        //return (resp.Id, resp.ConversationThreadId);
     }
 
     public static async Task PostReplyToGroupThread(String groupId, String threadId, String reply)
