@@ -522,7 +522,7 @@ internal class GraphHelper
         //see? At least I use a cache, it's not that bad...
         if (PlanGroups.ContainsKey(planId))
         {
-            //return PlanGroups[planId];
+            return PlanGroups[planId];
         }
         if (_userClient is null)
         {
@@ -688,11 +688,82 @@ internal class GraphHelper
         var serial = System.Text.Json.JsonSerializer.Serialize(task, opts);
         
         //Console.WriteLine(serial);
+
+
+        await GraphApiLimiter;
+        var token = await GetUserTokenAsync();
         
-        
-        
+        //TODO: Consider reusing HttpClients
+        //idk, maybe share it with the upload client?
+        using (var client = new HttpClient())
+        {
+
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+            
+            using (var content = new StringContent((serial)))
+            {
+                var postUrl = $"https://graph.microsoft.com/v1.0/planner/tasks";
+
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                
+                
+                await GraphApiLimiter;
+                var resp = await client.PostAsync(postUrl, content);
+
+                if (!resp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Error: Can not create task. The server said: {await resp.Content.ReadAsStringAsync()}");
+                    return null;
+                }
+
+
+                var respContent = await resp.Content.ReadAsStringAsync();
+                
+                var jresp = JsonSerializer.Deserialize<TPlannerTask?>(respContent, opts);
+                if (jresp is null || jresp.Value.id is null || jresp.Value.conversationThreadId is null || jresp.Value.etag is null)
+                {
+                    Console.WriteLine("Error parsing Task response from server.");
+                    Console.WriteLine($"Server sent: {jresp}");
+                    return null;
+                }
+
+                if (!jresp.Value.conversationThreadId.Equals(task.conversationThreadId,
+                        StringComparison.InvariantCulture))
+                {
+                    Console.WriteLine($"Info: Graph returned conversation thread ID does not match provided thread ID: {jresp.Value.conversationThreadId} != {task.conversationThreadId}");
+                }
+
+                if (task.details is null)
+                {
+                    return (jresp.Value.id, jresp.Value.conversationThreadId);
+                }
+
+                var taskDetails = JsonSerializer.Serialize(task.details);
+                using (var patchContent = new StringContent(taskDetails))
+                {
+                    patchContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    client.DefaultRequestHeaders.Add("Prefer", "return=representation");
+                    client.DefaultRequestHeaders.Add("If-Match", jresp.Value.etag);
+
+                    var patchUrl = $"https://graph.microsoft.com/v1.0/planner/tasks/{jresp.Value.id}/details";
+                    
+                    await GraphApiLimiter;
+                    var detailsResp = await client.PatchAsync(patchUrl, patchContent);
+                    
+                    if(!resp.IsSuccessStatusCode)
+                    {
+                        Console.WriteLine($"Error: Unable to patch task details. The server said {await detailsResp.Content.ReadAsStringAsync()}");
+                        Console.WriteLine($"Deleting task: {jresp.Value.id}, due to details failure.");
+                        await DeleteTask(jresp.Value.id, jresp.Value.etag);
+                        return null;
+                    }
+
+                    return (jresp.Value.id, jresp.Value.conversationThreadId);
+                }
+            }
+        }
+        //this is allegedly unreachable. I don't know if I believe that.
         return null;
-        //return (resp.Id, resp.ConversationThreadId);
     }
 
     public static async Task PostReplyToGroupThread(String groupId, String threadId, String reply)
