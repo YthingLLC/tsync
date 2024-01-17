@@ -500,6 +500,12 @@ internal class GraphHelper
         };
 
         await GraphApiLimiter;
+        //somehow, someway, using the Graph SDK to create the damn thread
+        //does not mean it knows about the thread when you try to post replies to it
+        //using the exact same _userClient object
+        //and it instead throws a damn fit (exception)
+        //it really would've been easier to just never use the damn SDK in the first place!
+        //what a piece...
         var resp = await _userClient.Groups[groupId].Threads.PostAsync(body);
 
         if (resp is not null)
@@ -766,6 +772,12 @@ internal class GraphHelper
         return null;
     }
 
+    //...this also can't use the Graph SDK
+    //because it caches groups and threads
+    //and if it didn't make them, or request them, it doesn't know about them
+    //and instead of just sending the damn request
+    //it instead throws an exception!
+    //what a piece of...
     public static async Task PostReplyToGroupThread(String groupId, String threadId, String reply)
     {
         if (_userClient is null)
@@ -773,20 +785,44 @@ internal class GraphHelper
             Console.WriteLine("Graph client not initialized!");
             return;
         }
-        var body = new ReplyPostRequestBody()
-        {
-            Post = new Post
-            {
-                Body = new ItemBody
-                {
-                    ContentType = BodyType.Text,
-                    Content = reply
-                }
-            }
-        };
+
+        var body = JsonSerializer.Serialize(new TGroupThreadPostContainer(reply));
 
         await GraphApiLimiter;
-        await _userClient.Groups[groupId].Threads[threadId].Reply.PostAsync(body);
+        var token =  await GetUserTokenAsync();
+
+        using (var client = new HttpClient())
+        {
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+            using (var content = new StringContent(body))
+            {
+                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+
+                //threads have == at the end usually, need to escape, this seems to be the simplest way
+                var postUrl = new Uri($"https://graph.microsoft.com/v1.0/groups/{groupId}/threads/{threadId}/reply").ToString();
+
+                await GraphApiLimiter;
+
+                var resp = await client.PostAsync(postUrl, content);
+
+                //Sometimes, this will return 404, even though using Graph explorer it works fine.
+                //I think this has something to do with the request happening too soon after creating the thread?
+                //Using the exact same postUrl and body with Graph Explorer works fine
+                if (resp.StatusCode == HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine("Info: Retrying post-reply, Graph returned 404...");
+                    await Task.Delay(TimeSpan.FromMilliseconds(1500));
+                    resp = await client.PostAsync(postUrl, content);
+                }
+                
+                if (!resp.IsSuccessStatusCode)
+                {
+                    //TODO: Figure out wtf is going on with curl, no idea why this returns 404 when Graph Explorer works fine
+                    //same Url and body
+                    Console.WriteLine($"Error: Unable to post reply to group {groupId} thread {threadId}. The server said {await resp.Content.ReadAsStringAsync()}");
+                }
+            }
+        }
     }
 
     public static async Task<List<(String, String)>?> GetPlanTaskIds(String planId)

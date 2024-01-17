@@ -106,3 +106,51 @@ public struct TPlannerTaskCheckItem
     public DateTimeOffset? lastModifiedDateTime { get; init; }
     //again, I don't care about supporting lastModifiedBy
 }
+
+
+
+//I hate this, but it's the easiest way to get this to represent how Graph expects it...
+//{
+//"post": {
+//    "body": {
+//        "contentType": "",
+//        "content": "content-value"
+//    }
+//}
+//}
+
+public struct TGroupThreadPostContainer
+{
+    public TGroupThreadPost post { get; init; }
+
+    //for convenience... it's silly to need to do this, it really is.
+    public TGroupThreadPostContainer(String content)
+    {
+        post = new TGroupThreadPost
+        {
+            body = new TGroupThreadPostBody
+            {
+                content = content
+            }
+        };
+    }
+}
+
+public struct TGroupThreadPost
+{
+    public TGroupThreadPostBody body { get; init; }
+}
+
+public struct TGroupThreadPostBody
+{
+    //official docs have an empty string for contentType and no real definition on what values are acceptable
+    //but from perusing around, it looks like "text" is the right answer
+    //"html" also seems acceptable, but I'm not doing that.
+    //https://learn.microsoft.com/en-us/graph/api/conversationthread-list-posts?view=graph-rest-1.0&tabs=http
+    //https://learn.microsoft.com/en-us/graph/api/post-reply?view=graph-rest-1.0&tabs=http
+    //https://learn.microsoft.com/en-us/graph/api/conversationthread-reply?view=graph-rest-1.0&tabs=http
+    public String contentType => "text";
+    
+    public String content { get; init; }
+    
+}
