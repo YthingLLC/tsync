@@ -279,18 +279,6 @@ internal class GraphHelper
         throw new NotImplementedException();
     }
 
-    private static async Task UploadAttachment(string name, Stream attachment, string taskId)
-    {
-        //TODO:
-        //1. Upload the attachment to SharePoint site associated with the plan
-        //2. Create the request body to attach the upload to the task
-        //3. Confirm that the upload actually suceeded
-        //https://learn.microsoft.com/en-us/graph/api/resources/plannerexternalreferences?view=graph-rest-1.0
-        //URLs are encoded, idk if the API needs this or if it will take unencoded URLs, probably not
-
-        throw new NotImplementedException();
-    }
-
     //the Graph API (v1) does not have the ability to create new planner plans
     //it can be done with the beta API, but I don't want to use that for this (beta API is subj to change)
     //I'd rather the "plans" be created by the user in the web UI
@@ -681,6 +669,8 @@ internal class GraphHelper
     
     public static async Task<(String?, String?)?> CreateTask(TPlannerTask task)
     {
+        //Item1 = TaskId
+        //Item2 = ThreadId
         if (_userClient is null)
         {
             Console.WriteLine("Graph client not initialized!");
@@ -697,7 +687,9 @@ internal class GraphHelper
 
         var serial = System.Text.Json.JsonSerializer.Serialize(task, opts);
         
-        Console.WriteLine(serial);
+        //Console.WriteLine(serial);
+        
+        
         
         return null;
         //return (resp.Id, resp.ConversationThreadId);
