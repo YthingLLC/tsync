@@ -1,5 +1,23 @@
+/*
+Copyright 2023 Ything LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+
 using System.Net;
 using System.Net.Http.Headers;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Azure.Core;
@@ -668,11 +686,24 @@ internal class GraphHelper
             conversationThreadId = convId,
             details = tdetails
         });
-
-
-
     }
-    
+
+    //yes, this is needed. A regular url encode won't work here.
+    //the wonderful developers at Microsoft only want the following characters encoded:
+    //. : % @ #
+    //https://learn.microsoft.com/en-us/graph/api/resources/plannerexternalreferences?view=graph-rest-1.0
+    //if you try to use a regular url encode (y'know, like a sane person), the calls fail, because Graph
+    //does not understand the urls...
+    public static String EncodeUrlForExternalRef(String url)
+    {
+        return url
+            .Replace("%", "%25")
+            .Replace(".", "%2E")
+            .Replace(":", "%3A")
+            .Replace("@", "%40")
+            .Replace("#", "%23");
+    }
+
     public static async Task<(String?, String?)?> CreateTask(TPlannerTask task)
     {
         //Item1 = TaskId
@@ -739,30 +770,57 @@ internal class GraphHelper
                     Console.WriteLine($"Info: Graph returned conversation thread ID does not match provided thread ID: {jresp.Value.conversationThreadId} != {task.conversationThreadId}");
                 }
 
-                if (task.details is null)
+                if (task.details is null || 
+                    (task.details.Value.description is null &&
+                     task.details.Value.checklist is null &&
+                     task.details.Value.references is null))
                 {
                     return (jresp.Value.id, jresp.Value.conversationThreadId);
                 }
 
-                var taskDetails = JsonSerializer.Serialize(task.details);
+                await GraphApiLimiter;
+                //yes. yet another request to Graph is needed
+                //the etag on the task, and the etag on the details are indeed... different.
+                //no, you can't get graph to give you both as a response to creating the task
+                //that would be too easy.
+                var detailsEtagResp = await client.GetAsync($"{postUrl}/{jresp.Value.id}/details");
+
+                if (!detailsEtagResp.IsSuccessStatusCode)
+                {
+                    Console.WriteLine("Error: Unable to get etag for details posting");
+                    return null;
+                }
+
+                var detailsEtag =
+                    JsonSerializer.Deserialize<TPlannerTaskDetails?>(await detailsEtagResp.Content.ReadAsStringAsync());
+
+                if (detailsEtag is null)
+                {
+                    Console.WriteLine("Error: Unable to parse details response from Graph (unknown etag)");
+                    return null;
+                }
+
+                var taskDetails = JsonSerializer.Serialize(task.details, opts);
                 using (var patchContent = new StringContent(taskDetails))
                 {
                     patchContent.Headers.ContentType = new MediaTypeHeaderValue("application/json");
                     client.DefaultRequestHeaders.Add("Prefer", "return=representation");
-                    client.DefaultRequestHeaders.Add("If-Match", jresp.Value.etag);
+                    client.DefaultRequestHeaders.Add("If-Match", detailsEtag.Value.etag);
 
-                    var patchUrl = $"https://graph.microsoft.com/v1.0/planner/tasks/{jresp.Value.id}/details";
+                    var patchUrl = $"{postUrl}/{jresp.Value.id}/details";
                     
                     await GraphApiLimiter;
                     var detailsResp = await client.PatchAsync(patchUrl, patchContent);
                     
-                    if(!resp.IsSuccessStatusCode)
+                    if(!detailsResp.IsSuccessStatusCode)
                     {
                         Console.WriteLine($"Error: Unable to patch task details. The server said {await detailsResp.Content.ReadAsStringAsync()}");
                         Console.WriteLine($"Deleting task: {jresp.Value.id}, due to details failure.");
                         await DeleteTask(jresp.Value.id, jresp.Value.etag);
                         return null;
                     }
+
+                    Console.WriteLine("Details posted!");
 
                     return (jresp.Value.id, jresp.Value.conversationThreadId);
                 }
@@ -793,13 +851,14 @@ internal class GraphHelper
 
         using (var client = new HttpClient())
         {
-            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
-            using (var content = new StringContent(body))
+            //client.DefaultRequestHeaders.Add("Authorization", $"Bearer {token}");
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using (var content = new StringContent(body, Encoding.UTF8, "application/json"))
             {
-                content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                //content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
 
                 //threads have == at the end usually, need to escape, this seems to be the simplest way
-                var postUrl = new Uri($"https://graph.microsoft.com/v1.0/groups/{groupId}/threads/{threadId}/reply").ToString();
+                var postUrl = $"https://graph.microsoft.com/v1.0/groups/{groupId}/threads/{threadId}/reply";
 
                 await GraphApiLimiter;
 
@@ -810,17 +869,37 @@ internal class GraphHelper
                 //Using the exact same postUrl and body with Graph Explorer works fine
                 if (resp.StatusCode == HttpStatusCode.NotFound)
                 {
-                    Console.WriteLine("Info: Retrying post-reply, Graph returned 404...");
-                    await Task.Delay(TimeSpan.FromMilliseconds(1500));
+                    Console.WriteLine("Info: Retrying post-reply (after 15 seconds), Graph returned 404...");
+                    await Task.Delay(TimeSpan.FromSeconds(15));
+                    resp = await client.PostAsync(postUrl, content);
+                }
+
+                if (resp.StatusCode == HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine("Info: Graph still says this doesn't exist. Waiting 45 more seconds and trying again...");
+                    await Task.Delay(TimeSpan.FromSeconds(45));
+                    resp = await client.PostAsync(postUrl, content);
+                }
+
+                if (resp.StatusCode == HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine("Info: Graph is really sure that this doesn't exist, but we'll try again in 60 seconds...");
+                    await Task.Delay(TimeSpan.FromSeconds(60));
                     resp = await client.PostAsync(postUrl, content);
                 }
                 
                 if (!resp.IsSuccessStatusCode)
                 {
                     //TODO: Figure out wtf is going on with curl, no idea why this returns 404 when Graph Explorer works fine
+                    //...it may just be Exchange online sucking, I finally got the 404 to replicate in curl, and then waiting a few more seconds
+                    //then trying again... it works
                     //same Url and body
                     Console.WriteLine($"Error: Unable to post reply to group {groupId} thread {threadId}. The server said {await resp.Content.ReadAsStringAsync()}");
+                    String curlCommand = $"curl -i -X POST -H \"Authorization: Bearer {token}\" -H \"Content-Type: application/json\" -d '{body}' \"{postUrl}\"";
+                    Console.WriteLine($"Try this with curl: {curlCommand}");
                 }
+
+                Console.WriteLine("Posted!");
             }
         }
     }

@@ -1,4 +1,21 @@
-﻿using System.Text.Json;
+﻿/*
+Copyright 2024 Ything LLC
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+
+using System.Text.Json;
 using Microsoft.Graph.Models;
 using tsync;
 
@@ -537,13 +554,18 @@ internal static class Tsync
             return;
         }
 
+        Dictionary<String, PlannerTask> postedTasks = new();
+        Dictionary<String, PlannerTask> postedTasksWithAttachments = new();
+        Int32 boardCounter = 0, listCounter = 0, cardCounter = 0;
         List<String> failedCardIds = new();
         foreach (var b in _boards)
         {
+            boardCounter++;
             var planId = GetPlanForBoard(b.Id);
 
             foreach (var list in b.Lists)
             {
+                listCounter++;
                 Console.WriteLine($"Creating bucket {list.Name}");
                 var bucket = await GraphHelper.CreatePlanBucket(planId.Item1, list.Name);
                 if (bucket is null)
@@ -556,6 +578,7 @@ internal static class Tsync
                 
                 foreach (var card in list.Cards)
                 {
+                    cardCounter++;
                     Console.WriteLine($"Creating task {card.Name}");
                     String title;
                     if (card.Name.Length > 255)
@@ -631,7 +654,9 @@ internal static class Tsync
                                 refUrl = meta.AttachmentData.Url;
                             }
 
-                            refUrl = System.Web.HttpUtility.UrlEncode(refUrl);
+                            //Nope, see the note on EncodeUrlForExternalRef in GraphHelper for reason why
+                            //refUrl = System.Web.HttpUtility.UrlEncode(refUrl);
+                            refUrl = GraphHelper.EncodeUrlForExternalRef(refUrl);
                             task.Details.References.AdditionalData.Add($"@{refUrl}", new PlannerExternalReference
                             {
                                 Alias = meta.AttachmentData.FileName,
@@ -641,12 +666,17 @@ internal static class Tsync
                             });
                         }
                     }
-
+                    
                     var resp = await GraphHelper.CreateTask(task);
 
                     if (resp is not null && resp.Value.Item1 is not null)
                     {
                         Console.WriteLine($"Task {resp.Value.Item1} created!");
+                        postedTasks.Add(resp.Value.Item1, task);
+                        if (card.Attachments.Count > 0)
+                        {
+                            postedTasksWithAttachments.Add(resp.Value.Item1, task);
+                        }
                     }
                     else
                     {
@@ -668,11 +698,19 @@ internal static class Tsync
                         }
 
                         Console.WriteLine($"Comments posted! Task {resp.Value.Item1} created!");
-                        break;
+                        //I don't remember why I'm breaking here...
+                        //break;
                     }
                 }
             }
         }
+
+        Console.WriteLine($"Total posted tasks: {postedTasks.Count}");
+        Console.WriteLine($"Total cards with attachments: {postedTasksWithAttachments.Count}");
+
+        Console.WriteLine($"Counted Boards: {boardCounter}");
+        Console.WriteLine($" Counted Lists: {listCounter}");
+        Console.WriteLine($" Counted Cards: {cardCounter}");
 
         Console.WriteLine("The following cards had unrecoverable errors:");
         foreach (var c in failedCardIds)
