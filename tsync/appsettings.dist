@@ -1,0 +1,19 @@
+{
+  "settings": {
+    "clientId": "",
+    "tenantId": "",
+    "trelloApiKey": "",
+    "trelloUserToken": "",
+    "downloadPath": "",
+    "graphUserScopes": [
+      "user.read",
+      "mail.read",
+      "mail.send",
+      "Group.ReadWrite.All",
+      "Directory.Read.All",
+      "Tasks.ReadWrite",
+      "Files.ReadWrite.All",
+      "Sites.ReadWrite.All"
+    ]
+  }
+}
