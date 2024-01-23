@@ -24,6 +24,10 @@
         <None Update="appsettings.dist">
           <CopyToOutputDirectory>Always</CopyToOutputDirectory>
         </None>
+        <None Update="appsettings.json.bak">
+          <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+        </None>
+        <None Remove="real\**" />
     </ItemGroup>
 
     <ItemGroup>
@@ -39,10 +43,12 @@
 
     <ItemGroup>
       <Compile Remove="attachments\**" />
+      <Compile Remove="real\**" />
     </ItemGroup>
 
     <ItemGroup>
       <EmbeddedResource Remove="attachments\**" />
+      <EmbeddedResource Remove="real\**" />
     </ItemGroup>
 
 </Project>
