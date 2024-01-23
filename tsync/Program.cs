@@ -76,6 +76,7 @@ internal static class Tsync
             Console.WriteLine("27. Save Upload State to File");
             Console.WriteLine("28. Load Upload State from File");
             Console.WriteLine("29. Clean Mapped Boards");
+            Console.WriteLine("30. Retry cards from fail.log");
 
             Console.WriteLine("---Graph Debug Opts---");
             Console.WriteLine("101. Display access token");
@@ -159,6 +160,9 @@ internal static class Tsync
                         break;
                     case 29:
                         await CleanBoards();
+                        break;
+                    case 30:
+                        await RetryFailed();
                         break;
                     case 101:
                         // Display access token
@@ -420,6 +424,7 @@ internal static class Tsync
         foreach (var bm in _boardMaps) Console.WriteLine(bm.ToString());
     }
 
+    //(planId, groupId)
     private static (string, string) GetPlanForBoard(string boardId)
     {
         var planMap = from board in _boardMaps
@@ -532,7 +537,8 @@ internal static class Tsync
         }
     }
 
-    private static async Task SyncBoardsToPlans()
+    //restrict to only cards in List<String> if provided
+    private static async Task SyncBoardsToPlans(List<String>? cardLimit = null)
     {
         if (_boards is null || _boardMaps.Count < 1 || _uploadedMetas.Count < 1 || !GraphHelper.PlansLoaded)
         {
@@ -565,19 +571,52 @@ internal static class Tsync
 
             foreach (var list in b.Lists)
             {
-                listCounter++;
-                Console.WriteLine($"Creating bucket {list.Name}");
-                var bucket = await GraphHelper.CreatePlanBucket(planId.Item1, list.Name);
-                if (bucket is null)
+                String? bucket;
+                //if a card limit is provided, that means we are retrying, and are not creating new buckets
+                if (cardLimit is null)
                 {
-                    Console.WriteLine($"Error: Unable to create bucket {list.Name} in {planId}");
-                    Console.WriteLine("Bailing out...");
-                    return;
+                    listCounter++;
+                    Console.WriteLine($"Creating bucket {list.Name}");
+                    bucket = await GraphHelper.CreatePlanBucket(planId.Item1, list.Name);
+                    if (bucket is null)
+                    {
+                        Console.WriteLine($"Error: Unable to create bucket {list.Name} in {planId}");
+                        Console.WriteLine("Bailing out...");
+                        return;
+                    }
+
+                    Console.WriteLine($"Bucket {bucket} created");
                 }
-                Console.WriteLine($"Bucket {bucket} created");
-                
+                else
+                {
+                    var bucketIds = await GraphHelper.GetBucketIds(planId.Item1);
+
+                    var buckets = from bu in bucketIds
+                        where bu.Item3.Equals(list.Name, StringComparison.InvariantCulture)
+                        select bu;
+
+                    bucket = buckets.FirstOrDefault().Item1;
+
+                    if (bucket is null)
+                    {
+                        Console.WriteLine($"Unknown bucket for retry! Please create bucket {list.Name} in {planId.Item1}");
+                        
+                        continue;
+                    }
+                    
+                }
+
                 foreach (var card in list.Cards)
                 {
+                    if (cardLimit is not null)
+                    {
+                        if (!cardLimit.Contains(card.Id))
+                        {
+                            //retry output is too noisy with this
+                            //Console.WriteLine($"Skipping {card.Id}");
+                            continue;
+                        }
+                    }
                     cardCounter++;
                     Console.WriteLine($"Creating task {card.Name}");
                     String title;
@@ -765,6 +804,31 @@ internal static class Tsync
                 await GraphHelper.DeleteBucket(bucket.Item1, bucket.Item2);
             }
         }
+    }
+
+
+    private static async Task RetryFailed()
+    {
+        //yes, I know, I'm not being consistent.
+        //This is a quick and dirty hack.
+        //I'll make this pretty when I care to.
+        try
+        {
+            var lines = new List<String>(await File.ReadAllLinesAsync("fail.log"));
+
+            Console.WriteLine($"Read {lines.Count} lines");
+
+            await SyncBoardsToPlans(lines);
+
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine("Error: Unable to read fail.log, ensure it is in the working directory.");
+        }
+        
+        
+        
+
     }
     
     private struct BoardMap(string trelloBoard, string graphGroup, string graphPlan)

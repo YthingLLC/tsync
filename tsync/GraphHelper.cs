@@ -29,6 +29,7 @@ using Microsoft.Graph.Models;
 using tsync;
 using RateLimiter;
 using ComposableAsync;
+using Microsoft.Graph.Models.ODataErrors;
 
 internal class GraphHelper
 {
@@ -235,14 +236,26 @@ internal class GraphHelper
         var plansList = new List<GroupPlans>(grplans.Count);
         foreach (var g in grplans)
         {
-            //Console.Write($"{g.Key.Item1, -38} {g.Key.Item2, -36} ");
-            var val = await g.Value;
-            if (val?.Value is null)
-                //Console.WriteLine("NULL");
-                continue;
+            //I absolutely despise that the Graph SDK throws exceptions on error responses from Graph
+            //I would much prefer nulls, or, even better, Result types like rust.
+            //I *really* hate exceptions.
+            //I *really* wish that I just wrote this whole damn thing in Rust now.
+            try
+            {
+                //Console.Write($"{g.Key.Item1, -38} {g.Key.Item2, -36} ");
+                var val = await g.Value;
+                if (val?.Value is null)
+                    //Console.WriteLine("NULL");
+                    continue;
 
-            //Console.WriteLine($"{val.Value.Count}");
-            if (val.Value.Count > 0) plansList.Add(new GroupPlans(g.Key.Item1, g.Key.Item2, val.Value));
+                //Console.WriteLine($"{val.Value.Count}");
+                if (val.Value.Count > 0) plansList.Add(new GroupPlans(g.Key.Item1, g.Key.Item2, val.Value));
+            }
+            catch (ODataError e)
+            {
+                Console.WriteLine($"Error: Can not read plans in group {g.Key.Item1} - {g.Key.Item2}. {e.Error?.Message}");
+            }
+            
         }
 
         //PrintLine();
@@ -887,7 +900,26 @@ internal class GraphHelper
                     await Task.Delay(TimeSpan.FromSeconds(60));
                     resp = await client.PostAsync(postUrl, content);
                 }
-                
+
+                if (resp.StatusCode == HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine("Info: Graph is really sticking to it's guns that this doesn't exist. Silly Graph, it gave us the conversationThreadId... Trying again in 240 seconds...");
+                    await Task.Delay(TimeSpan.FromSeconds(240));
+                    resp = await client.PostAsync(postUrl, content);
+                }
+
+                if (resp.StatusCode == HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine("Info: Ok, maybe Graph just lied to us and made up a conversationThreadId that doesn't actually exist. Who knows. Maybe it just wanted to watch us suffer. Waiting one final time before giving up and letting Rick Astley down... trying again in 600 seconds.");
+                    await Task.Delay(TimeSpan.FromSeconds(600));
+                    resp = await client.PostAsync(postUrl, content);
+                }
+
+                if (resp.StatusCode == HttpStatusCode.NotFound)
+                {
+                    Console.WriteLine("Info: Graph totally lied to us. There is nothing here. Go ahead and try to use curl if you'd like. *insert shocked_pikachu.jpg here*");
+                }
+
                 if (!resp.IsSuccessStatusCode)
                 {
                     //TODO: Figure out wtf is going on with curl, no idea why this returns 404 when Graph Explorer works fine
@@ -954,8 +986,10 @@ internal class GraphHelper
             configuration.Headers.Add("If-Match", etag);
         });
     }
-
-    public static async Task<List<(String, String)>?> GetBucketIds(String planId)
+    
+    //(bucketId, etag, name)
+    //I should probably convert this to a struct...
+    public static async Task<List<(String, String, String)>?> GetBucketIds(String planId)
     {
         if (_userClient is null)
         {
@@ -972,11 +1006,11 @@ internal class GraphHelper
             return null;
         }
         
-        var ret = new List<(String, String)>();
+        var ret = new List<(String, String, String)>();
         
         foreach (var r in resp.Value)
         {
-            if (r.Id is null)
+            if (r.Id is null || r.Name is null)
             {
                 continue;
             }
@@ -985,7 +1019,7 @@ internal class GraphHelper
             {
                 continue;
             }
-            ret.Add((r.Id, etag));
+            ret.Add((r.Id, etag, r.Name));
         }
         
         return ret;
