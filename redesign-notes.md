@@ -20,6 +20,15 @@ You get the conversationThreadId back from Graph instantly, but you can't always
 that conversationThreadId to post more replies to right away. It can take up to 5 minutes
 (from my testing) before the conversationThreadId can be used to post replies to!
 
+Which, by the way, Microsoft's own people say [shouldn't be possible](https://learn.microsoft.com/en-us/answers/questions/1499714/why-does-a-request-to-a-conversation-thread-reply).
+
+I mean, I guess it makes sense... Microsoft somehow managed to make Exchange a vital part of the infrastructure of MS Planner... /s
+
+Or... my favorite... undocumented maximum character lengths that are completely nonsensical at times.
+
+Or... even more fun... a maximum of 20 checklist items, and 10 attachments, on a single task. [Yes, really!](https://learn.microsoft.com/en-us/office365/planner/planner-limits)
+
+
 ### So now what?
 
 From what I've learned building this, there are several things I would do differently.
@@ -58,3 +67,8 @@ I use the Graph SDK to get a User token... which I could probably figure out how
 The Trello SDK was complete garbage though. I don't even know why I wasted my time trying to make that thing work.
 
 SDK developers really do overcomplicate the crap out of things in the name of being "clever"
+
+
+### What I really want to do
+
+Make a replacement to both Trello and MS Planner that doesn't have these silly limitations. With an API that doesn't suck.
