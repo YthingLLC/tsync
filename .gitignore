@@ -7,3 +7,5 @@ riderModule.iml
 trello-api-key.txt
 tsync/appsettings.json
 tsync/attachments/
+tsync/real/
+tsync/fail.log
